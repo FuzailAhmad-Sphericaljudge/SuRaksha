@@ -7,3 +7,4 @@ coverage/
 .codex-video-tools/
 .codex-video-review/
 *.log
+*.tsbuildinfo

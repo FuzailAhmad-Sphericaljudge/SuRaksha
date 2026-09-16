@@ -8,9 +8,11 @@ Students locate a building, inspect available evidence, report a specific issue 
 - [Product and verification rules](docs/PRODUCT.md)
 - [Reference design brief](docs/DESIGN.md)
 - [Delivery workflow](docs/DELIVERY.md)
+- [Architecture and provider decisions](docs/ARCHITECTURE.md)
+- [Local development](docs/DEVELOPMENT.md)
 
 ## Current status
 
-Phase 01 product scope and planning are complete. No application, live verification service or government integration exists yet. This checkout was cloned from https://github.com/FuzailAhmad-Sphericaljudge/SuRaksha.git and is isolated from the unrelated parent Desktop repository. Remote delivery is reported separately after each successful push.
+Phase 01 planning is complete. Phase 02 implements the React web/Node API foundation, shared Zod contracts, server configuration and automated verification. No live verification service or government integration exists yet. This checkout was cloned from https://github.com/FuzailAhmad-Sphericaljudge/SuRaksha.git and is isolated from the unrelated parent Desktop repository. Remote delivery is reported separately after each successful push.
 
-Phase 02 establishes Node.js 24, npm workspaces, strict TypeScript, shared Zod contracts and application verification scripts. Architecture/provider choices are proposed, not installed or deployed.
+Use Node.js 24 and npm 11. Run `npm ci`, then `npm run dev`. Run `npm run verify` before pushing. Provider choices are documented; no external infrastructure is provisioned. The initial screen is a foundation preview, not the final 3D design.

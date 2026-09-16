@@ -10,14 +10,14 @@ Support PG, hostel and coaching property types. A campus can contain multiple bu
 
 One identity can have multiple roles. Server authorization determines permissions; selecting a role does not grant authority.
 
-| Role | Allowed activity | Gate |
-| --- | --- | --- |
-| Public visitor | Read moderated public profiles and evidence | No login |
-| Student | Report, corroborate with evidence, follow, compare, provide recheck feedback | Account; residency/enrolment assurance separately labeled |
-| Owner/institute manager | Manage claimed properties, respond, upload documents/repair proof, request inspection | Approved management claim scoped to a property |
-| Parent/guardian | Read public profiles, shortlist, receive permitted linked updates | Explicit revocable student consent for private sharing |
-| Professional/inspector | Assigned inspections and scoped findings/rechecks | Reviewed credentials, scope, expiry and conflict checks |
-| Internal reviewer | Moderate, review claims, handle disputes and escalations | Invitation/provisioning only; audited privileged actions |
+| Role                    | Allowed activity                                                                      | Gate                                                      |
+| ----------------------- | ------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| Public visitor          | Read moderated public profiles and evidence                                           | No login                                                  |
+| Student                 | Report, corroborate with evidence, follow, compare, provide recheck feedback          | Account; residency/enrolment assurance separately labeled |
+| Owner/institute manager | Manage claimed properties, respond, upload documents/repair proof, request inspection | Approved management claim scoped to a property            |
+| Parent/guardian         | Read public profiles, shortlist, receive permitted linked updates                     | Explicit revocable student consent for private sharing    |
+| Professional/inspector  | Assigned inspections and scoped findings/rechecks                                     | Reviewed credentials, scope, expiry and conflict checks   |
+| Internal reviewer       | Moderate, review claims, handle disputes and escalations                              | Invitation/provisioning only; audited privileged actions  |
 
 Phone verification proves phone access, not residency, qualifications or ownership. Owner payment must never determine a positive finding. No public role picker for internal admin.
 

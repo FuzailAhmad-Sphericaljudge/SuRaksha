@@ -1,0 +1,32 @@
+{
+  "name": "suraksha",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25",
+    "npm": ">=11 <12"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run build -w @suraksha/contracts && concurrently --kill-others -n contracts,api,web \"npm run dev -w @suraksha/contracts\" \"npm run dev -w @suraksha/api\" \"npm run dev -w @suraksha/web\"",
+    "build": "npm run build -w @suraksha/contracts && npm run build -w @suraksha/api && npm run build -w @suraksha/web",
+    "typecheck": "npm run build -w @suraksha/contracts && npm run typecheck --workspaces",
+    "test": "npm run build -w @suraksha/contracts && vitest run",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "verify": "npm run format:check && npm run typecheck && npm run test && npm run build",
+    "start": "npm run start -w @suraksha/api",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "concurrently": "^9.2.1",
+    "prettier": "^3.6.2",
+    "typescript": "~5.9.3",
+    "vitest": "^5.0.1"
+  }
+}
