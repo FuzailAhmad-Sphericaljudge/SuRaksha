@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { utcTimestampSchema } from './common.js';
 
 export * from './common.js';
+export * from './auth.js';
 export * from './discovery.js';
 export * from './evidence.js';
 export * from './fixtures.js';
@@ -19,7 +20,13 @@ export const healthResponseSchema = z.strictObject({
 
 export const apiErrorSchema = z.strictObject({
   error: z.strictObject({
-    code: z.enum(['NOT_FOUND', 'BAD_REQUEST', 'INTERNAL_ERROR']),
+    code: z.enum([
+      'NOT_FOUND',
+      'BAD_REQUEST',
+      'UNAUTHORIZED',
+      'FORBIDDEN',
+      'INTERNAL_ERROR',
+    ]),
     message: z.string().min(1),
     requestId: z.string().min(1),
   }),

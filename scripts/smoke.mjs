@@ -62,6 +62,16 @@ try {
   });
   assert.equal(health.status, 200);
   assert.equal((await health.json()).service, 'suraksha-api');
+  const session = await fetch(`${origin}/api/session`, {
+    signal: AbortSignal.timeout(5_000),
+  });
+  assert.equal(session.status, 200);
+  assert.deepEqual(await session.json(), { authenticated: false });
+  const privateRoute = await fetch(`${origin}/api/private/check`, {
+    signal: AbortSignal.timeout(5_000),
+  });
+  assert.equal(privateRoute.status, 401);
+  assert.equal((await privateRoute.json()).error.code, 'UNAUTHORIZED');
   for (const route of ['/api/missing', '/.env', '/src/server.ts']) {
     const response = await fetch(`${origin}${route}`, {
       signal: AbortSignal.timeout(5_000),

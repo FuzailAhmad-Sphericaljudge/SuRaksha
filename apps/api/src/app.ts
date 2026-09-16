@@ -1,7 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
-import { apiErrorSchema, healthResponseSchema } from '@suraksha/contracts';
+import {
+  apiErrorSchema,
+  authFailureSchema,
+  healthResponseSchema,
+  sessionResponseSchema,
+} from '@suraksha/contracts';
+import { readWorkspaceIdentity } from './workspaceIdentity.js';
 
 type AppOptions = {
   now?: () => Date;
@@ -38,6 +44,31 @@ export function createApp(options: AppOptions = {}) {
       status: 'ok',
       timestamp: now().toISOString(),
     });
+  });
+
+  app.get('/api/session', async (request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    const user = readWorkspaceIdentity(request.headers);
+    return sessionResponseSchema.parse(
+      user
+        ? { authenticated: true, user, memberships: [] }
+        : { authenticated: false },
+    );
+  });
+
+  app.get('/api/private/check', async (request, reply) => {
+    const user = readWorkspaceIdentity(request.headers);
+    if (!user)
+      return reply.code(401).send(
+        authFailureSchema.parse({
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'Sign-in is required for this action.',
+            requestId: request.id,
+          },
+        }),
+      );
+    return { authenticated: true };
   });
 
   if (options.webRoot) {

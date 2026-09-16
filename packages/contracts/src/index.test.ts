@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  authenticatedUserSchema,
   apiErrorSchema,
   healthResponseSchema,
+  sessionResponseSchema,
   utcTimestampSchema,
 } from './index.js';
 
@@ -37,5 +39,48 @@ describe('public foundation contracts', () => {
         error: { code: 'INTERNAL_ERROR', message: 'Failed', requestId: '' },
       }).success,
     ).toBe(false);
+  });
+
+  it('keeps anonymous and authenticated sessions explicit', () => {
+    expect(
+      sessionResponseSchema.safeParse({ authenticated: false }).success,
+    ).toBe(true);
+    const user = {
+      id: 'workspace-user-1',
+      email: 'student@example.test',
+      displayName: 'Demo Student',
+    };
+    expect(authenticatedUserSchema.safeParse(user).success).toBe(true);
+    expect(
+      sessionResponseSchema.safeParse({
+        authenticated: true,
+        user,
+        memberships: [],
+      }).success,
+    ).toBe(true);
+    expect(
+      sessionResponseSchema.safeParse({
+        authenticated: true,
+        user: { ...user, email: 'not-an-email' },
+        memberships: [],
+      }).success,
+    ).toBe(false);
+    expect(
+      sessionResponseSchema.safeParse({
+        authenticated: true,
+        user,
+        memberships: [
+          {
+            id: '10000000-0000-4000-8000-000000000001',
+            propertyId: null,
+            role: 'internal_reviewer',
+            status: 'active',
+            expiresAt: null,
+            createdAt: '2026-09-16T08:00:00Z',
+            updatedAt: '2026-09-16T09:00:00Z',
+          },
+        ],
+      }).success,
+    ).toBe(true);
   });
 });

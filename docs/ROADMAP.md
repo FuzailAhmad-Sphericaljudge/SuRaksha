@@ -56,6 +56,8 @@ Depends on 03. One login with student, owner, parent and professional roles; int
 
 Done when: cross-user/property access is denied, role selection cannot grant privilege, and logout/session expiry are tested.
 
+Status: foundation complete. Server-side workspace identity parsing, anonymous/authenticated session contracts, structured protected-route 401s, optional display-name decoding, no impersonation and identity-boundary tests are implemented. Persistent memberships, role authorization, logout and expiry remain pending provider/persistence work; no role is granted by the browser or by a client flag.
+
 ## Phase 08 — Owner claims and professional credential review
 
 Depends on 07. Private document submission, reviewer queues, claim decisions, professional specialty/expiry and conflicts. Separate phone identity from residency/enrolment assurance.

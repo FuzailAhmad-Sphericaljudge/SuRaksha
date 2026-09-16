@@ -40,6 +40,37 @@ describe('API foundation', () => {
     }
   });
 
+  it('returns anonymous sessions publicly and protects identity-aware routes', async () => {
+    const app = createApp();
+    apps.push(app);
+    const anonymous = await app.inject('/api/session');
+    expect(anonymous.statusCode).toBe(200);
+    expect(anonymous.json()).toEqual({ authenticated: false });
+    const denied = await app.inject('/api/private/check');
+    expect(denied.statusCode).toBe(401);
+    expect(denied.json().error.code).toBe('UNAUTHORIZED');
+    const headers = {
+      'oai-authenticated-user-id': 'workspace-1',
+      'oai-authenticated-user-email': 'student@example.test',
+      'oai-authenticated-user-full-name': 'Demo%20Student',
+      'oai-authenticated-user-full-name-encoding': 'percent-encoded-utf-8',
+    };
+    const session = await app.inject({ url: '/api/session', headers });
+    expect(session.statusCode).toBe(200);
+    expect(session.json()).toMatchObject({
+      authenticated: true,
+      user: {
+        id: 'workspace-1',
+        email: 'student@example.test',
+        displayName: 'Demo Student',
+      },
+      memberships: [],
+    });
+    expect(
+      (await app.inject({ url: '/api/private/check', headers })).statusCode,
+    ).toBe(200);
+  });
+
   it('redacts internal failures and recovers on a subsequent request', async () => {
     let first = true;
     const app = createApp({
