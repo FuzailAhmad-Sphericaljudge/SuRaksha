@@ -6,8 +6,19 @@ import {
   type FormEvent,
 } from 'react';
 import { createRoot } from 'react-dom/client';
-import { DEMO_NOTICE, demoProperty } from '@suraksha/contracts';
-import { fetchBootstrap, fetchHealth } from './api';
+import {
+  DEMO_NOTICE,
+  demoProperty,
+  type SessionResponse,
+} from '@suraksha/contracts';
+import {
+  fetchBootstrap,
+  fetchHealth,
+  fetchSession,
+  loginDemoAccount,
+  logoutDemoAccount,
+  registerDemoAccount,
+} from './api';
 import './styles.css';
 
 const spaces = [
@@ -53,6 +64,12 @@ function App() {
   const [mode, setMode] = useState<'demo' | 'production' | 'unknown'>(
     'unknown',
   );
+  const [session, setSession] = useState<SessionResponse>({
+    authenticated: false,
+  });
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authKind, setAuthKind] = useState<'register' | 'login'>('register');
+  const [authError, setAuthError] = useState('');
   const [query, setQuery] = useState('');
   const [message, setMessage] = useState(
     'Search is a visual preview. No live properties are indexed.',
@@ -67,10 +84,12 @@ function App() {
     void Promise.all([
       fetchHealth(controller.signal),
       fetchBootstrap(controller.signal),
+      fetchSession(controller.signal),
     ])
-      .then(([, bootstrap]) => {
+      .then(([, bootstrap, activeSession]) => {
         setConnection('connected');
         setMode(bootstrap.mode);
+        setSession(activeSession);
       })
       .catch(() => setConnection('unavailable'));
     return () => controller.abort();
@@ -132,6 +151,35 @@ function App() {
   );
   const selected = spaces.find((space) => space.id === selectedId) ?? spaces[0];
 
+  async function register(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAuthError('');
+    const data = new FormData(event.currentTarget);
+    try {
+      const email = String(data.get('email'));
+      const password = String(data.get('password'));
+      setSession(
+        authKind === 'register'
+          ? await registerDemoAccount({
+              displayName: String(data.get('displayName')),
+              email,
+              password,
+            })
+          : await loginDemoAccount({ email, password }),
+      );
+      setAuthOpen(false);
+    } catch (error) {
+      setAuthError(
+        error instanceof Error ? error.message : 'Registration failed.',
+      );
+    }
+  }
+
+  async function logout() {
+    await logoutDemoAccount();
+    setSession({ authenticated: false });
+  }
+
   return (
     <div className="shell">
       {mode === 'demo' && (
@@ -151,10 +199,62 @@ function App() {
           <a href="#profiles">Demo profiles</a>
           <a href="#purpose">About</a>
         </nav>
-        <a className="report-link" href="#resolution">
-          Report an issue <Arrow />
-        </a>
+        {session.authenticated ? (
+          <button className="account-button" onClick={() => void logout()}>
+            {session.user.displayName} · Sign out
+          </button>
+        ) : (
+          <button
+            className="account-button"
+            onClick={() => setAuthOpen((open) => !open)}
+          >
+            Create demo account
+          </button>
+        )}
       </header>
+      {authOpen && mode === 'demo' && (
+        <form className="auth-panel" onSubmit={register}>
+          <strong>
+            {authKind === 'register'
+              ? 'Create a demo account'
+              : 'Sign in to demo'}
+          </strong>
+          {authKind === 'register' && (
+            <input
+              name="displayName"
+              placeholder="Your name"
+              minLength={2}
+              required
+            />
+          )}
+          <input name="email" type="email" placeholder="Email" required />
+          <input
+            name="password"
+            type="password"
+            placeholder="Password (8+ characters)"
+            minLength={8}
+            required
+          />
+          <button type="submit">
+            {authKind === 'register' ? 'Create and sign in' : 'Sign in'}
+          </button>
+          <button
+            className="auth-switch"
+            type="button"
+            onClick={() => {
+              setAuthKind((kind) =>
+                kind === 'register' ? 'login' : 'register',
+              );
+              setAuthError('');
+            }}
+          >
+            {authKind === 'register'
+              ? 'Already registered? Sign in'
+              : 'Need an account? Register'}
+          </button>
+          {authError && <p role="alert">{authError}</p>}
+        </form>
+      )}
       <main id="top">
         <section className="hero" aria-labelledby="hero-title">
           <img

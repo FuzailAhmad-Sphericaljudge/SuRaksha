@@ -22,6 +22,50 @@ button,
 input {
   font: inherit;
 }
+.account-button {
+  justify-self: end;
+  border: 1px solid var(--ink);
+  border-radius: 999px;
+  padding: 0.65rem 1rem;
+  background: transparent;
+  cursor: pointer;
+}
+.auth-panel {
+  position: absolute;
+  z-index: 80;
+  right: clamp(1rem, 3vw, 3rem);
+  width: min(360px, calc(100% - 2rem));
+  display: grid;
+  gap: 0.7rem;
+  padding: 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: #fff;
+  box-shadow: 0 18px 60px #13232a26;
+}
+.auth-panel input,
+.auth-panel button {
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+}
+.auth-panel .auth-switch {
+  padding: 0;
+  border: 0;
+  color: var(--ink);
+  background: transparent;
+  text-decoration: underline;
+}
+.auth-panel button {
+  color: #fff;
+  background: var(--ink);
+  cursor: pointer;
+}
+.auth-panel p {
+  margin: 0;
+  color: #a33b28;
+  font-size: 0.85rem;
+}
 a {
   color: inherit;
 }

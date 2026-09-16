@@ -15,6 +15,7 @@ if (config.NODE_ENV === 'production' && !existsSync(webRoot)) {
 const app = createApp({
   logLevel: config.LOG_LEVEL,
   mode: config.APP_MODE,
+  database,
   ...(existsSync(webRoot) ? { webRoot } : {}),
 });
 

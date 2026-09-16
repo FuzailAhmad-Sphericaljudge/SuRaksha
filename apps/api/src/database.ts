@@ -11,8 +11,9 @@ export type PropertyCandidateRecord = {
 };
 
 export function openDatabase(path: string) {
-  const resolved = resolve(path);
-  mkdirSync(dirname(resolved), { recursive: true });
+  const resolved = path === ':memory:' ? path : resolve(path);
+  if (resolved !== ':memory:')
+    mkdirSync(dirname(resolved), { recursive: true });
   const database = new DatabaseSync(resolved);
   database.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;');
   database.exec(`
@@ -23,6 +24,16 @@ export function openDatabase(path: string) {
     );
     INSERT OR IGNORE INTO schema_migrations(version, applied_at)
       VALUES (1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL,
+      password_hash TEXT NOT NULL, created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS sessions (
+      token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      expires_at TEXT NOT NULL, created_at TEXT NOT NULL
+    );
+    INSERT OR IGNORE INTO schema_migrations(version, applied_at)
+      VALUES (2, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
   `);
   return database;
 }

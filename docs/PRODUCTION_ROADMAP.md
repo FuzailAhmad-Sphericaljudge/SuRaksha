@@ -47,6 +47,8 @@ Connect a production-ready identity provider, sessions, logout and expiry. Creat
 
 Done when users can sign in/out and protected routes reject expired or forged identities.
 
+Status: partial — demo mode now has persistent accounts, password hashing, seven-day HttpOnly sessions, registration, login and logout in the browser. A production identity provider, recovery and role onboarding remain pending.
+
 ## Phase 04 — Role onboarding
 
 Build onboarding for student, parent, owner/manager and professional accounts. A user can hold more than one reviewed membership without creating duplicate accounts.

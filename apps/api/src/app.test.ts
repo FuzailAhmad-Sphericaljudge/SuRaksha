@@ -6,6 +6,7 @@ import {
 } from '@suraksha/contracts';
 import { createApp } from './app.js';
 import { readConfig } from './config.js';
+import { openDatabase } from './database.js';
 
 const apps: ReturnType<typeof createApp>[] = [];
 afterEach(async () => {
@@ -88,6 +89,76 @@ describe('API foundation', () => {
     expect(
       (await app.inject({ url: '/api/private/check', headers })).statusCode,
     ).toBe(200);
+  });
+
+  it('registers, restores and revokes a demo session through an HttpOnly cookie', async () => {
+    const database = openDatabase(':memory:');
+    const app = createApp({
+      mode: 'demo',
+      database,
+      now: () => new Date('2026-09-16T10:30:00Z'),
+    });
+    apps.push(app);
+    const registration = await app.inject({
+      method: 'POST',
+      url: '/api/auth/register',
+      payload: {
+        displayName: 'Demo Student',
+        email: 'student@example.test',
+        password: 'safe-password',
+      },
+    });
+    expect(registration.statusCode).toBe(201);
+    const cookie = registration.headers['set-cookie'];
+    expect(cookie).toContain('HttpOnly');
+    expect(
+      (await app.inject({ url: '/api/session', headers: { cookie } })).json(),
+    ).toMatchObject({
+      authenticated: true,
+      user: { email: 'student@example.test' },
+    });
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/auth/logout',
+          headers: { cookie },
+        })
+      ).statusCode,
+    ).toBe(204);
+    expect(
+      (await app.inject({ url: '/api/session', headers: { cookie } })).json(),
+    ).toEqual({ authenticated: false });
+    database.close();
+  });
+
+  it('rejects duplicate registration and incorrect passwords', async () => {
+    const database = openDatabase(':memory:');
+    const app = createApp({ mode: 'demo', database });
+    apps.push(app);
+    const payload = {
+      displayName: 'Demo Student',
+      email: 'student@example.test',
+      password: 'safe-password',
+    };
+    expect(
+      (await app.inject({ method: 'POST', url: '/api/auth/register', payload }))
+        .statusCode,
+    ).toBe(201);
+    expect(
+      (await app.inject({ method: 'POST', url: '/api/auth/register', payload }))
+        .statusCode,
+    ).toBe(409);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/auth/login',
+          payload: { email: payload.email, password: 'wrong-password' },
+        })
+      ).statusCode,
+    ).toBe(401);
+    database.close();
   });
 
   it('redacts internal failures and recovers on a subsequent request', async () => {
