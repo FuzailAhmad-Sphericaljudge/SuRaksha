@@ -2,8 +2,10 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createApp } from './app.js';
 import { readConfig } from './config.js';
+import { openDatabase } from './database.js';
 
 const config = readConfig(process.env);
+const database = openDatabase(config.DATABASE_PATH);
 const webRoot = fileURLToPath(new URL('../../web/dist/', import.meta.url));
 if (config.NODE_ENV === 'production' && !existsSync(webRoot)) {
   throw new Error(
@@ -21,6 +23,7 @@ async function shutdown() {
   if (closing) return;
   closing = true;
   await app.close();
+  database.close();
 }
 process.once('SIGINT', () => {
   void shutdown();

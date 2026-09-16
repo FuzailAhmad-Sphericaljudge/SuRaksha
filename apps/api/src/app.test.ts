@@ -114,7 +114,15 @@ describe('API foundation', () => {
   it('fails fast on invalid environment without including values', () => {
     expect(readConfig({}).PORT).toBe(3001);
     expect(readConfig({}).APP_MODE).toBe('demo');
-    expect(readConfig({ APP_MODE: 'production' }).APP_MODE).toBe('production');
+    expect(
+      readConfig({
+        APP_MODE: 'production',
+        DATABASE_PATH: 'data/production.sqlite',
+      }).APP_MODE,
+    ).toBe('production');
+    expect(() => readConfig({ APP_MODE: 'production' })).toThrow(
+      'DATABASE_PATH',
+    );
     expect(() => readConfig({ APP_MODE: 'preview' })).toThrow('APP_MODE');
     for (const PORT of ['0', '65536', 'abc', '1.5', '']) {
       expect(() => readConfig({ PORT })).toThrow('PORT');

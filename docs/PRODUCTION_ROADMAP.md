@@ -39,6 +39,8 @@ Add PostgreSQL, migrations, seed tooling, repositories and transaction boundarie
 
 Done when records persist after restart and demo reset affects only the demo database.
 
+Status: partial — a versioned SQLite persistence layer now survives reopen and tests prove separate demo/production database files. PostgreSQL, the complete domain schema and transactional repositories remain required before deployment.
+
 ## Phase 03 — Working authentication
 
 Connect a production-ready identity provider, sessions, logout and expiry. Create a local development identity adapter for demo mode. Keep role membership server controlled.

@@ -11,7 +11,7 @@ npm run dev
 
 The first command uses the committed lockfile. Development builds the shared contracts first, then watches contracts/API/web together. Web: http://127.0.0.1:5173. API: http://127.0.0.1:3001/api/health. Ctrl+C stops development processes. The web server proxies `/api` to port 3001; if you change that API port, update `apps/web/vite.config.ts` too.
 
-No `.env` is required with defaults. For overrides, copy `apps/api/.env.example` to `apps/api/.env`. Never commit `.env` or put credentials in `apps/web`.
+No `.env` is required for demo defaults. The API creates `data/suraksha-demo.sqlite`, which is ignored by Git. Production mode requires an explicit, separately located `DATABASE_PATH`; never point it at the demo file. For overrides, copy `apps/api/.env.example` to `apps/api/.env`. Never commit `.env`, database files or credentials, and never put secrets in `apps/web`.
 
 ## Checks and production boot
 

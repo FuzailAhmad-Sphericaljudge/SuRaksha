@@ -10,6 +10,7 @@ const configSchema = z.object({
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
     .default('info'),
   APP_MODE: z.enum(['demo', 'production']).default('demo'),
+  DATABASE_PATH: z.string().trim().min(1).optional(),
 });
 
 export function readConfig(environment: NodeJS.ProcessEnv) {
@@ -20,5 +21,10 @@ export function readConfig(environment: NodeJS.ProcessEnv) {
       `Invalid server configuration: ${result.error.issues.map((issue) => issue.path.join('.')).join(', ')}`,
     );
   }
-  return result.data;
+  if (result.data.APP_MODE === 'production' && !result.data.DATABASE_PATH)
+    throw new Error('Invalid server configuration: DATABASE_PATH');
+  return {
+    ...result.data,
+    DATABASE_PATH: result.data.DATABASE_PATH ?? 'data/suraksha-demo.sqlite',
+  };
 }

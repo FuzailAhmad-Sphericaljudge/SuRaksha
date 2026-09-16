@@ -8,3 +8,7 @@ coverage/
 .codex-video-review/
 *.log
 *.tsbuildinfo
+data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
