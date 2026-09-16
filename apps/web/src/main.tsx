@@ -1,61 +1,249 @@
-import { StrictMode, useEffect, useState } from 'react';
+import { StrictMode, useEffect, useState, type FormEvent } from 'react';
 import { createRoot } from 'react-dom/client';
+import { DEMO_NOTICE, demoProperty } from '@suraksha/contracts';
 import { fetchHealth } from './api';
 import './styles.css';
 
+const spaces = [
+  [demoProperty.name, 'Paying guest', 'Sample Nagar · New Delhi'],
+  ['Nayi Disha Demo Hostel', 'Hostel', 'Example Enclave · New Delhi'],
+  ['Udaan Demo Learning Centre', 'Coaching', 'Model Colony · New Delhi'],
+] as const;
+
+function Arrow() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true">
+      <path d="M4 10h11M11 5l5 5-5 5" />
+    </svg>
+  );
+}
+
 function App() {
-  const [status, setStatus] = useState('Connecting…');
-  const [attempt, setAttempt] = useState(0);
+  const [connection, setConnection] = useState('checking');
+  const [query, setQuery] = useState('');
+  const [message, setMessage] = useState(
+    'Search is a visual preview. No live properties are indexed.',
+  );
 
   useEffect(() => {
     const controller = new AbortController();
-    setStatus('Connecting…');
     void fetchHealth(controller.signal)
-      .then(() => {
-        if (!controller.signal.aborted) setStatus('Connected');
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setStatus('Unavailable');
-      });
+      .then(() => setConnection('connected'))
+      .catch(() => setConnection('unavailable'));
     return () => controller.abort();
-  }, [attempt]);
+  }, []);
+
+  function search(event: FormEvent) {
+    event.preventDefault();
+    const value = query.trim();
+    setMessage(
+      value
+        ? `Showing fictional examples near “${value}”.`
+        : 'Enter an address, landmark or property name.',
+    );
+    if (value)
+      document
+        .querySelector('#profiles')
+        ?.scrollIntoView({ behavior: 'smooth' });
+  }
 
   return (
-    <main>
-      <header>
-        <a href="/" aria-label="SafePG India home">
-          SafePG<span> India</span>
+    <div className="shell">
+      <header className="topbar">
+        <a className="brand" href="#top">
+          SafePG<span>.</span>
         </a>
-        <span>SuRaksha</span>
+        <nav aria-label="Primary">
+          <a href="#process">How it works</a>
+          <a href="#profiles">Demo profiles</a>
+          <a href="#purpose">About</a>
+        </nav>
+        <a className="report-link" href="#resolution">
+          Report an issue <Arrow />
+        </a>
       </header>
-      <section aria-labelledby="title">
-        <p className="eyebrow">PGs · Hostels · Coaching spaces</p>
-        <h1 id="title">
-          A clearer picture.
-          <br />A safer place to learn.
-        </h1>
-        <p className="intro">
-          Understand reported concerns, see the evidence and follow what happens
-          next.
-        </p>
-        <aside>
-          <strong>We’re building SafePG.</strong>
+      <main id="top">
+        <section className="hero" aria-labelledby="hero-title">
+          <img
+            src="/images/hero-student-housing.png"
+            alt="Fictional modern student residence at dusk"
+            fetchPriority="high"
+          />
+          <div className="shade" />
+          <p className="demo-pill">Concept preview · Fictional property</p>
+          <div className="hero-copy">
+            <p className="kicker">Safety evidence for student spaces</p>
+            <h1 id="hero-title">
+              See the place.
+              <br />
+              Know the concerns.
+            </h1>
+            <form className="search" onSubmit={search} role="search">
+              <label htmlFor="search">
+                Find a PG, hostel or coaching space
+              </label>
+              <div>
+                <input
+                  id="search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Address, landmark or property name"
+                />
+                <button>
+                  Search <Arrow />
+                </button>
+              </div>
+              <p aria-live="polite">{message}</p>
+            </form>
+          </div>
+        </section>
+
+        <section className="statement" id="purpose">
+          <p className="index">01 / Purpose</p>
+          <h2>
+            One clear record for every concern—from the first report to the
+            verified fix.
+          </h2>
           <p>
-            Property search, reports and inspections are not available yet. No
-            buildings have been verified on this platform.
+            SafePG brings location-specific reports, photo and video evidence,
+            owner responses and professional inspection history into one
+            understandable profile.
           </p>
-        </aside>
-      </section>
+        </section>
+
+        <section className="process" id="process">
+          <div>
+            <p className="index">02 / How it works</p>
+            <h2>Evidence before assumptions.</h2>
+            <p>
+              Unknown information stays unknown. Every status shows what was
+              checked, when it was checked and what still needs attention.
+            </p>
+          </div>
+          <div className="map" aria-label="Illustrative floor map preview">
+            <span className="pin one" />
+            <span className="pin two" />
+            <article>
+              <small>Location pin</small>
+              <strong>Common staircase</strong>
+              <span>Student-submitted · Review pending</span>
+            </article>
+          </div>
+          <ol>
+            <li>
+              <span>01</span>
+              <div>
+                <h3>Locate the building</h3>
+                <p>Confirm the address, building and floor.</p>
+              </div>
+            </li>
+            <li>
+              <span>02</span>
+              <div>
+                <h3>Review the evidence</h3>
+                <p>See moderated media, source dates and verification level.</p>
+              </div>
+            </li>
+            <li>
+              <span>03</span>
+              <div>
+                <h3>Follow the resolution</h3>
+                <p>Track repair proof, recheck and complete history.</p>
+              </div>
+            </li>
+          </ol>
+        </section>
+
+        <section className="profiles" id="profiles">
+          <div className="section-head">
+            <div>
+              <p className="index">03 / Explore</p>
+              <h2>
+                Fictional spaces,
+                <br />
+                real product thinking.
+              </h2>
+            </div>
+            <p>{DEMO_NOTICE}</p>
+          </div>
+          <div className="cards">
+            {spaces.map(([name, type, area], i) => (
+              <article className="card" key={name}>
+                <a href="#resolution">
+                  <div className="photo">
+                    <img
+                      src="/images/hero-student-housing.png"
+                      alt=""
+                      loading={i ? 'lazy' : 'eager'}
+                    />
+                    <span>0{i + 1}</span>
+                  </div>
+                  <div className="card-copy">
+                    <small>{type}</small>
+                    <h3>{name}</h3>
+                    <p>{area}</p>
+                    <em>Demo profile · Evidence pending</em>
+                    <Arrow />
+                  </div>
+                </a>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="resolution" id="resolution">
+          <div>
+            <p className="index">04 / Resolution</p>
+            <h2>A report should lead somewhere.</h2>
+            <p>
+              Students see what changed. Owners submit repair proof. Reviewers
+              preserve the evidence and decision history.
+            </p>
+          </div>
+          <article className="timeline">
+            <header>
+              <span>Demo issue timeline</span>
+              <b>In review</b>
+            </header>
+            <ol>
+              <li className="done">
+                Issue reported <small>Photo and location received</small>
+              </li>
+              <li className="active">
+                Evidence review <small>Public details being checked</small>
+              </li>
+              <li>
+                Owner response <small>Not received</small>
+              </li>
+              <li>
+                Fix verification <small>Not started</small>
+              </li>
+            </ol>
+            <p>Demonstration only · No real building finding</p>
+          </article>
+        </section>
+      </main>
       <footer>
-        <p role="status">Service connection: {status}</p>
-        {status === 'Unavailable' && (
-          <button onClick={() => setAttempt((value) => value + 1)}>
-            Try again
-          </button>
-        )}
-        <span>Evidence. Action. Follow-through.</span>
+        <div>
+          <a className="brand" href="#top">
+            SafePG<span>.</span>
+          </a>
+          <p>Evidence-led safety profiles for student spaces.</p>
+        </div>
+        <nav>
+          <a href="#process">Process</a>
+          <a href="#profiles">Profiles</a>
+          <a href="#purpose">About</a>
+        </nav>
+        <p className="service">
+          <i className={connection} />
+          API {connection}
+        </p>
+        <small>
+          Product prototype · No emergency monitoring or verified live listings
+        </small>
       </footer>
-    </main>
+    </div>
   );
 }
 

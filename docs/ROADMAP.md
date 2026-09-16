@@ -32,6 +32,8 @@ Depends on 02. Implement responsive LANDMARK-style SafePG layout, typography, ar
 
 Done when: desktop/mobile layouts are coherent, keyboard navigation works and demo interactions are labeled. Do not pretend placeholders are real reports.
 
+Status: complete. The SafePG page now includes a reference-matched rounded architectural hero, editorial typography, whitespace-led sections, responsive fictional property cards, dark footer, address-search entry, public-profile anchors, reduced-motion handling and explicit demo/live-data limitations. A project-local generated image depicts a fictional property. Search and report actions remain labeled product previews; no live listing or verification claim was introduced.
+
 ## Phase 05 — Architectural assets and cinematic motion
 
 Depends on 04. Review reference transitions more closely; source/create authorized architectural assets, implement hero treatment and reference-inspired motion. Document where original assets are unavailable.

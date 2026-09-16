@@ -16,6 +16,12 @@ The recording alone does not establish whether source visuals are live Three.js,
 4. Three.js illustrative hostel with floor selection and linked issue hotspots.
 5. Optional property-specific geometry only from verified plans; show provenance and accuracy limitations.
 
+## Phase 04 implementation
+
+The responsive visual foundation now follows the reference's large rounded architectural hero, restrained navigation, oversized editorial typography, generous white space, asymmetric profile cards, blue-grey information sections and dark footer. Address search is an explicitly non-live preview that leads to fictional profiles. The illustrative floor-area panel and report timeline are product previews, not verified findings or evacuation guidance.
+
+The hero uses one original generated architectural asset at `apps/web/public/images/hero-student-housing.png`. It depicts a fictional modern student residence at dusk, with no brand, text or identifiable real property. The image is reused with different crops in demo cards to stay within the page's focused image budget. Phase 05 will refine asset delivery and cinematic motion; Phase 16 owns interactive Three.js issue hotspots.
+
 Address search and access to reports stay obvious. Landing-page animation must not block core tasks. Provide a static/reduced-motion fallback, touch/keyboard alternatives, lazy loading and mobile performance checks. A generic 3D model is illustrative, not a surveyed digital twin or evacuation guide.
 
 Public-facing media shows only cleared/redacted evidence; original files are never embedded directly. Demo 3D pins must never be presented as verified findings at a real property.
