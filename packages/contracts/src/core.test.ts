@@ -10,6 +10,7 @@ import {
   discoveryQuerySchema,
   discoveryResponseSchema,
   evidenceSchema,
+  evidenceUploadIntentSchema,
   floorAreaSchema,
   inspectionSchema,
   membershipCanManageProperty,
@@ -187,6 +188,29 @@ describe('report states and transitions', () => {
 });
 
 describe('evidence and inspection boundaries', () => {
+  it('validates upload intent before private storage is touched', () => {
+    const intent = {
+      reportId: demoReport.id,
+      kind: 'photo',
+      mediaType: 'image/jpeg',
+      byteSize: 1000,
+      sha256: 'a'.repeat(64),
+      idempotencyKey: 'upload_attempt_123456',
+    };
+    expect(evidenceUploadIntentSchema.safeParse(intent).success).toBe(true);
+    expect(
+      evidenceUploadIntentSchema.safeParse({
+        ...intent,
+        mediaType: 'video/mp4',
+      }).success,
+    ).toBe(false);
+    expect(
+      evidenceUploadIntentSchema.safeParse({
+        ...intent,
+        idempotencyKey: 'short',
+      }).success,
+    ).toBe(false);
+  });
   const evidence = {
     id: id(5),
     reportId: demoReport.id,

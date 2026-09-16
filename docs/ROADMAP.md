@@ -72,6 +72,8 @@ Depends on 07. Private storage, authorized uploads, type/size limits, upload pro
 
 Done when: unauthorized reads fail, invalid files are rejected, duplicate/retried uploads do not duplicate evidence, and originals cannot leak through public URLs.
 
+Status: foundation complete — upload intents now validate media-kind matching, size, hash and idempotency keys before storage. Private storage, signed URLs and processing remain pending.
+
 ## Phase 10 — Location-specific issue reporting
 
 Depends on 06/09. Building/floor/area selection, categories, descriptions, annotated photos, video timestamps and draft submission. Keep sensitive grievances private.
