@@ -38,6 +38,18 @@ svg {
   margin: auto;
   overflow: hidden;
 }
+.mode-banner {
+  position: sticky;
+  z-index: 90;
+  top: 0;
+  padding: 0.45rem 1rem;
+  color: #fff;
+  background: #8a4b18;
+  text-align: center;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
 .intro-screen {
   position: fixed;
   z-index: 100;

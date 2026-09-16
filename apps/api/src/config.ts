@@ -9,6 +9,7 @@ const configSchema = z.object({
   LOG_LEVEL: z
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
     .default('info'),
+  APP_MODE: z.enum(['demo', 'production']).default('demo'),
 });
 
 export function readConfig(environment: NodeJS.ProcessEnv) {

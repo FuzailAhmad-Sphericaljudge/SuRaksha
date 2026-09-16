@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { apiErrorSchema, healthResponseSchema } from '@suraksha/contracts';
+import {
+  apiErrorSchema,
+  bootstrapResponseSchema,
+  healthResponseSchema,
+} from '@suraksha/contracts';
 import { createApp } from './app.js';
 import { readConfig } from './config.js';
 
@@ -9,6 +13,21 @@ afterEach(async () => {
 });
 
 describe('API foundation', () => {
+  it('selects mode on the server and ignores client query overrides', async () => {
+    const demo = createApp({ mode: 'demo' });
+    const production = createApp({ mode: 'production' });
+    apps.push(demo, production);
+    expect(
+      bootstrapResponseSchema.parse(
+        (await demo.inject('/api/bootstrap?mode=production')).json(),
+      ),
+    ).toEqual({ mode: 'demo', demoData: true });
+    expect(
+      bootstrapResponseSchema.parse(
+        (await production.inject('/api/bootstrap?mode=demo')).json(),
+      ),
+    ).toEqual({ mode: 'production', demoData: false });
+  });
   it('returns validated UTC liveness on repeated read-only requests', async () => {
     const app = createApp({ now: () => new Date('2026-09-16T10:30:00Z') });
     apps.push(app);
@@ -94,6 +113,9 @@ describe('API foundation', () => {
 
   it('fails fast on invalid environment without including values', () => {
     expect(readConfig({}).PORT).toBe(3001);
+    expect(readConfig({}).APP_MODE).toBe('demo');
+    expect(readConfig({ APP_MODE: 'production' }).APP_MODE).toBe('production');
+    expect(() => readConfig({ APP_MODE: 'preview' })).toThrow('APP_MODE');
     for (const PORT of ['0', '65536', 'abc', '1.5', '']) {
       expect(() => readConfig({ PORT })).toThrow('PORT');
     }

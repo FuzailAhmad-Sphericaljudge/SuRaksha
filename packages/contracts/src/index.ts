@@ -5,6 +5,7 @@ export * from './common.js';
 export * from './auth.js';
 export * from './discovery.js';
 export * from './evidence.js';
+export * from './environment.js';
 export * from './fixtures.js';
 export * from './identity.js';
 export * from './property.js';

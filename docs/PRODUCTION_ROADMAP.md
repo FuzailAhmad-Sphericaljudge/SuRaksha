@@ -31,6 +31,8 @@ Add validated server configuration for `demo` and `production`, expose mode in s
 
 Done when two isolated configurations run locally and tests prove production cannot read demo fixtures.
 
+Status: partial — server-selected modes, bootstrap exposure, client override rejection and a persistent demo banner are implemented. Physical database/storage isolation will be enforced when those services arrive in Phase 02.
+
 ## Phase 02 — Database and migrations
 
 Add PostgreSQL, migrations, seed tooling, repositories and transaction boundaries for users, properties, buildings, areas, memberships, claims, reports, evidence and audit records.

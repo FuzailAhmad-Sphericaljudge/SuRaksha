@@ -7,7 +7,7 @@ import {
 } from 'react';
 import { createRoot } from 'react-dom/client';
 import { DEMO_NOTICE, demoProperty } from '@suraksha/contracts';
-import { fetchHealth } from './api';
+import { fetchBootstrap, fetchHealth } from './api';
 import './styles.css';
 
 const spaces = [
@@ -50,6 +50,9 @@ function Arrow() {
 
 function App() {
   const [connection, setConnection] = useState('checking');
+  const [mode, setMode] = useState<'demo' | 'production' | 'unknown'>(
+    'unknown',
+  );
   const [query, setQuery] = useState('');
   const [message, setMessage] = useState(
     'Search is a visual preview. No live properties are indexed.',
@@ -61,8 +64,14 @@ function App() {
 
   useEffect(() => {
     const controller = new AbortController();
-    void fetchHealth(controller.signal)
-      .then(() => setConnection('connected'))
+    void Promise.all([
+      fetchHealth(controller.signal),
+      fetchBootstrap(controller.signal),
+    ])
+      .then(([, bootstrap]) => {
+        setConnection('connected');
+        setMode(bootstrap.mode);
+      })
       .catch(() => setConnection('unavailable'));
     return () => controller.abort();
   }, []);
@@ -125,6 +134,11 @@ function App() {
 
   return (
     <div className="shell">
+      {mode === 'demo' && (
+        <div className="mode-banner" role="status">
+          Demo mode · Fictional resettable data
+        </div>
+      )}
       <div className="intro-screen" aria-hidden="true">
         <span>SafePG.</span>
       </div>

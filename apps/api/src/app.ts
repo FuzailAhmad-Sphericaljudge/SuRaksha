@@ -4,6 +4,7 @@ import fastifyStatic from '@fastify/static';
 import {
   apiErrorSchema,
   authFailureSchema,
+  bootstrapResponseSchema,
   healthResponseSchema,
   sessionResponseSchema,
 } from '@suraksha/contracts';
@@ -13,10 +14,12 @@ type AppOptions = {
   now?: () => Date;
   logLevel?: string;
   webRoot?: string;
+  mode?: 'demo' | 'production';
 };
 
 export function createApp(options: AppOptions = {}) {
   const now = options.now ?? (() => new Date());
+  const mode = options.mode ?? 'demo';
   const app = Fastify({
     logger: options.logLevel
       ? {
@@ -44,6 +47,11 @@ export function createApp(options: AppOptions = {}) {
       status: 'ok',
       timestamp: now().toISOString(),
     });
+  });
+
+  app.get('/api/bootstrap', async (_request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    return bootstrapResponseSchema.parse({ mode, demoData: mode === 'demo' });
   });
 
   app.get('/api/session', async (request, reply) => {
