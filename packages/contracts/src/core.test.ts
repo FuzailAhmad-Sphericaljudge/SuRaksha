@@ -7,6 +7,8 @@ import {
   demoBuilding,
   demoProperty,
   demoReport,
+  discoveryQuerySchema,
+  discoveryResponseSchema,
   evidenceSchema,
   floorAreaSchema,
   inspectionSchema,
@@ -276,6 +278,42 @@ describe('audit and pagination boundaries', () => {
     expect(paginationQuerySchema.safeParse({ limit: 101 }).success).toBe(false);
     expect(
       paginationQuerySchema.safeParse({ cursor: '../secret' }).success,
+    ).toBe(false);
+  });
+});
+
+describe('discovery boundaries', () => {
+  it('normalizes bounded search filters and preserves an explicit all option', () => {
+    expect(discoveryQuerySchema.parse({}).type).toBe('all');
+    expect(
+      discoveryQuerySchema.parse({ query: '  sample nagar ', type: 'hostel' }),
+    ).toEqual({ query: 'sample nagar', type: 'hostel' });
+    expect(
+      discoveryQuerySchema.safeParse({ query: 'x'.repeat(161) }).success,
+    ).toBe(false);
+  });
+
+  it('requires demo provenance and bounded pagination in discovery responses', () => {
+    const result = {
+      propertyId: demoProperty.id,
+      name: demoProperty.name,
+      type: 'paying_guest',
+      displayAddress: 'Sample Nagar · New Delhi',
+      matchReason: 'address',
+      identityStatus: 'unconfirmed',
+      dataMode: 'demo',
+    } as const;
+    expect(
+      discoveryResponseSchema.safeParse({
+        results: [result],
+        pagination: { nextCursor: null, hasMore: false },
+      }).success,
+    ).toBe(true);
+    expect(
+      discoveryResponseSchema.safeParse({
+        results: [{ ...result, dataMode: 'live' }],
+        pagination: { nextCursor: null, hasMore: false },
+      }).success,
     ).toBe(false);
   });
 });

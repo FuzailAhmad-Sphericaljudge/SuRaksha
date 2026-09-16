@@ -48,6 +48,8 @@ Depends on 03/04. Address search, property type filters, map/list identity confi
 
 Done when: ambiguous addresses and duplicate buildings are handled, empty/error states work, and selecting a property consistently opens the correct profile.
 
+Status: complete for the demo discovery slice. Query/name/address matching, PG/hostel/coaching filters, result counts, empty state, selected profile navigation and explicit building identity confirmation status are implemented against fictional local fixtures. Discovery contracts include bounded filters, demo provenance, match reason and identity status. No live geocoder, map provider, database registry or verified property has been introduced yet.
+
 ## Phase 07 — Authentication and scoped roles
 
 Depends on 03. One login with student, owner, parent and professional roles; internal staff provisioned privately. Add account sessions, server authorization and scoped property membership.

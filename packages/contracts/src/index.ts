@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { utcTimestampSchema } from './common.js';
 
 export * from './common.js';
+export * from './discovery.js';
 export * from './evidence.js';
 export * from './fixtures.js';
 export * from './identity.js';

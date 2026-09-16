@@ -10,6 +10,7 @@ Students locate a building, inspect available evidence, report a specific issue 
 - [Delivery workflow](docs/DELIVERY.md)
 - [Architecture and provider decisions](docs/ARCHITECTURE.md)
 - [Core domain contracts](docs/CONTRACTS.md)
+- [Discovery behavior](docs/DISCOVERY.md)
 - [Local development](docs/DEVELOPMENT.md)
 
 ## Current status

@@ -11,24 +11,33 @@ import { fetchHealth } from './api';
 import './styles.css';
 
 const spaces = [
-  [
-    demoProperty.name,
-    'Paying guest',
-    'Sample Nagar · New Delhi',
-    '/images/hero-student-housing.webp',
-  ],
-  [
-    'Nayi Disha Demo Hostel',
-    'Hostel',
-    'Example Enclave · New Delhi',
-    '/images/demo-hostel-courtyard.webp',
-  ],
-  [
-    'Udaan Demo Learning Centre',
-    'Coaching',
-    'Model Colony · New Delhi',
-    '/images/demo-coaching-frontage.webp',
-  ],
+  {
+    id: demoProperty.id,
+    name: demoProperty.name,
+    type: 'paying_guest',
+    label: 'Paying guest',
+    area: 'Sample Nagar · New Delhi',
+    image: '/images/hero-student-housing.webp',
+    identity: 'unconfirmed',
+  },
+  {
+    id: '10000000-0000-4000-8000-000000000006',
+    name: 'Nayi Disha Demo Hostel',
+    type: 'hostel',
+    label: 'Hostel',
+    area: 'Example Enclave · New Delhi',
+    image: '/images/demo-hostel-courtyard.webp',
+    identity: 'unconfirmed',
+  },
+  {
+    id: '10000000-0000-4000-8000-000000000007',
+    name: 'Udaan Demo Learning Centre',
+    type: 'coaching_institute',
+    label: 'Coaching',
+    area: 'Model Colony · New Delhi',
+    image: '/images/demo-coaching-frontage.webp',
+    identity: 'unconfirmed',
+  },
 ] as const;
 
 function Arrow() {
@@ -45,6 +54,10 @@ function App() {
   const [message, setMessage] = useState(
     'Search is a visual preview. No live properties are indexed.',
   );
+  const [filter, setFilter] = useState<
+    'all' | 'paying_guest' | 'hostel' | 'coaching_institute'
+  >('all');
+  const [selectedId, setSelectedId] = useState(demoProperty.id);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -92,14 +105,23 @@ function App() {
     const value = query.trim();
     setMessage(
       value
-        ? `Showing fictional examples near “${value}”.`
-        : 'Enter an address, landmark or property name.',
+        ? `Showing fictional examples matching “${value}”.`
+        : 'Showing all fictional demo spaces.',
     );
     if (value)
       document
         .querySelector('#profiles')
         ?.scrollIntoView({ behavior: 'smooth' });
   }
+
+  const normalized = query.trim().toLocaleLowerCase();
+  const visibleSpaces = spaces.filter(
+    (space) =>
+      (filter === 'all' || space.type === filter) &&
+      (!normalized ||
+        `${space.name} ${space.area}`.toLocaleLowerCase().includes(normalized)),
+  );
+  const selected = spaces.find((space) => space.id === selectedId) ?? spaces[0];
 
   return (
     <div className="shell">
@@ -223,29 +245,105 @@ function App() {
             </div>
             <p>{DEMO_NOTICE}</p>
           </div>
-          <div className="cards">
-            {spaces.map(([name, type, area, image], i) => (
-              <article
-                className="card"
-                key={name}
-                data-reveal
-                style={{ '--reveal-delay': `${i * 90}ms` } as CSSProperties}
-              >
-                <a href="#resolution">
-                  <div className="photo">
-                    <img src={image} alt="" loading={i ? 'lazy' : 'eager'} />
-                    <span>0{i + 1}</span>
-                  </div>
-                  <div className="card-copy">
-                    <small>{type}</small>
-                    <h3>{name}</h3>
-                    <p>{area}</p>
-                    <em>Demo profile · Evidence pending</em>
-                    <Arrow />
-                  </div>
-                </a>
-              </article>
-            ))}
+          <div className="discovery">
+            <div
+              className="discovery-controls"
+              role="group"
+              aria-label="Filter demo spaces"
+            >
+              {(
+                [
+                  ['all', 'All spaces'],
+                  ['paying_guest', 'PGs'],
+                  ['hostel', 'Hostels'],
+                  ['coaching_institute', 'Coaching'],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  className={filter === value ? 'selected' : ''}
+                  key={value}
+                  type="button"
+                  onClick={() => setFilter(value)}
+                >
+                  {label}
+                </button>
+              ))}
+              <span>
+                {visibleSpaces.length} fictional{' '}
+                {visibleSpaces.length === 1 ? 'space' : 'spaces'}
+              </span>
+            </div>
+            <div className="cards">
+              {visibleSpaces.map((space, i) => (
+                <article
+                  className="card"
+                  key={space.id}
+                  data-reveal
+                  style={{ '--reveal-delay': `${i * 90}ms` } as CSSProperties}
+                >
+                  <a
+                    href="#profile-detail"
+                    onClick={() => setSelectedId(space.id)}
+                  >
+                    <div className="photo">
+                      <img
+                        src={space.image}
+                        alt=""
+                        loading={i ? 'lazy' : 'eager'}
+                      />
+                      <span>0{i + 1}</span>
+                    </div>
+                    <div className="card-copy">
+                      <small>{space.label}</small>
+                      <h3>{space.name}</h3>
+                      <p>{space.area}</p>
+                      <em>Demo profile · Evidence pending</em>
+                      <Arrow />
+                    </div>
+                  </a>
+                </article>
+              ))}
+            </div>
+            {visibleSpaces.length === 0 && (
+              <p className="empty-state">
+                No fictional demo space matches that search. Try a broader
+                address or choose All spaces.
+              </p>
+            )}
+          </div>
+        </section>
+
+        <section
+          className="profile-detail"
+          id="profile-detail"
+          data-reveal
+          aria-labelledby="selected-profile-title"
+        >
+          <div>
+            <p className="index">Selected profile · Identity check</p>
+            <h2 id="selected-profile-title">{selected.name}</h2>
+            <p>{selected.area}</p>
+          </div>
+          <div className="identity-card">
+            <span className="identity-mark">?</span>
+            <div>
+              <strong>Building identity {selected.identity}</strong>
+              <p>
+                This fictional profile is awaiting address and building
+                confirmation. Reports must attach to the correct building before
+                they are published.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                setMessage(
+                  'Identity confirmation will be available when the registry is connected.',
+                )
+              }
+            >
+              Confirm building
+            </button>
           </div>
         </section>
 
