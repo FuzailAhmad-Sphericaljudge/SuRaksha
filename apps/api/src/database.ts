@@ -34,8 +34,49 @@ export function openDatabase(path: string) {
     );
     INSERT OR IGNORE INTO schema_migrations(version, applied_at)
       VALUES (2, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    CREATE TABLE IF NOT EXISTS account_profiles (
+      user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      role TEXT NOT NULL CHECK(role IN ('student', 'parent_guardian', 'owner_manager', 'professional')),
+      review_status TEXT NOT NULL CHECK(review_status IN ('active', 'pending_review')),
+      updated_at TEXT NOT NULL
+    );
+    INSERT OR IGNORE INTO schema_migrations(version, applied_at)
+      VALUES (3, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
   `);
   return database;
+}
+
+export type AccountProfileRecord = {
+  role: 'student' | 'parent_guardian' | 'owner_manager' | 'professional';
+  reviewStatus: 'active' | 'pending_review';
+};
+export class AccountProfileRepository {
+  constructor(private readonly database: DatabaseSync) {}
+  get(userId: string): AccountProfileRecord | null {
+    return (
+      (this.database
+        .prepare(
+          'SELECT role, review_status AS reviewStatus FROM account_profiles WHERE user_id = ?',
+        )
+        .get(userId) as AccountProfileRecord | undefined) ?? null
+    );
+  }
+  save(
+    userId: string,
+    role: AccountProfileRecord['role'],
+    now: Date,
+  ): AccountProfileRecord {
+    const reviewStatus =
+      role === 'owner_manager' || role === 'professional'
+        ? 'pending_review'
+        : 'active';
+    this.database
+      .prepare(
+        `INSERT INTO account_profiles(user_id, role, review_status, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET role = excluded.role, review_status = excluded.review_status, updated_at = excluded.updated_at`,
+      )
+      .run(userId, role, reviewStatus, now.toISOString());
+    return { role, reviewStatus };
+  }
 }
 
 export class PropertyCandidateRepository {

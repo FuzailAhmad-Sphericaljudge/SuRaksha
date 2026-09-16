@@ -11,6 +11,10 @@ export const authenticatedUserSchema = z.strictObject({
   email: z.email().max(320),
   displayName: z.string().trim().min(1).max(100),
 });
+export const accountProfileSchema = z.strictObject({
+  role: z.enum(['student', 'parent_guardian', 'owner_manager', 'professional']),
+  reviewStatus: z.enum(['active', 'pending_review']),
+});
 
 export const sessionResponseSchema = z.discriminatedUnion('authenticated', [
   z.strictObject({ authenticated: z.literal(false) }),
@@ -30,6 +34,7 @@ export const sessionResponseSchema = z.discriminatedUnion('authenticated', [
           .and(recordMetaSchema),
       )
       .max(20),
+    profile: accountProfileSchema.nullable().optional(),
   }),
 ]);
 
@@ -42,4 +47,5 @@ export const authFailureSchema = z.strictObject({
 });
 
 export type AuthenticatedUser = z.infer<typeof authenticatedUserSchema>;
+export type AccountProfile = z.infer<typeof accountProfileSchema>;
 export type SessionResponse = z.infer<typeof sessionResponseSchema>;

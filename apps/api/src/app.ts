@@ -12,6 +12,7 @@ import {
   sessionResponseSchema,
 } from '@suraksha/contracts';
 import { readWorkspaceIdentity } from './workspaceIdentity.js';
+import { AccountProfileRepository } from './database.js';
 import {
   clearSessionCookie,
   loginDemoUser,
@@ -39,6 +40,14 @@ export function createApp(options: AppOptions = {}) {
   });
   const registrationSchema = credentialsSchema.extend({
     displayName: z.string().trim().min(2).max(100),
+  });
+  const onboardingSchema = z.strictObject({
+    role: z.enum([
+      'student',
+      'parent_guardian',
+      'owner_manager',
+      'professional',
+    ]),
   });
   const currentUser = (headers: IncomingHttpHeaders) =>
     (database && mode === 'demo'
@@ -85,11 +94,50 @@ export function createApp(options: AppOptions = {}) {
   app.get('/api/session', async (request, reply) => {
     reply.header('Cache-Control', 'no-store');
     const user = currentUser(request.headers);
+    const profile =
+      user && database
+        ? new AccountProfileRepository(database).get(user.id)
+        : null;
     return sessionResponseSchema.parse(
       user
-        ? { authenticated: true, user, memberships: [] }
+        ? { authenticated: true, user, memberships: [], profile }
         : { authenticated: false },
     );
+  });
+
+  app.post('/api/onboarding', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user)
+      return reply.code(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Sign-in is required.',
+          requestId: request.id,
+        },
+      });
+    if (mode !== 'demo' || !database)
+      return reply.code(503).send({
+        error: {
+          code: 'ONBOARDING_UNAVAILABLE',
+          message: 'Onboarding is not configured.',
+          requestId: request.id,
+        },
+      });
+    const parsed = onboardingSchema.safeParse(request.body);
+    if (!parsed.success)
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Choose a supported account role.',
+          requestId: request.id,
+        },
+      });
+    const profile = new AccountProfileRepository(database).save(
+      user.id,
+      parsed.data.role,
+      now(),
+    );
+    return { authenticated: true, user, memberships: [], profile };
   });
 
   app.post('/api/auth/register', async (request, reply) => {
@@ -114,9 +162,12 @@ export function createApp(options: AppOptions = {}) {
     try {
       const result = registerDemoUser(database, parsed.data, now());
       reply.header('Set-Cookie', sessionCookie(result.token, result.expiresAt));
-      return reply
-        .code(201)
-        .send({ authenticated: true, user: result.user, memberships: [] });
+      return reply.code(201).send({
+        authenticated: true,
+        user: result.user,
+        memberships: [],
+        profile: null,
+      });
     } catch (error) {
       if (error instanceof Error && error.message.includes('UNIQUE'))
         return reply.code(409).send({
@@ -163,7 +214,12 @@ export function createApp(options: AppOptions = {}) {
         },
       });
     reply.header('Set-Cookie', sessionCookie(result.token, result.expiresAt));
-    return { authenticated: true, user: result.user, memberships: [] };
+    return {
+      authenticated: true,
+      user: result.user,
+      memberships: [],
+      profile: new AccountProfileRepository(database).get(result.user.id),
+    };
   });
 
   app.post('/api/auth/logout', async (request, reply) => {

@@ -66,6 +66,47 @@ input {
   color: #a33b28;
   font-size: 0.85rem;
 }
+.role-panel {
+  margin: 1rem clamp(1rem, 3vw, 3rem);
+  padding: clamp(1.25rem, 3vw, 2.5rem);
+  border-radius: 1rem;
+  background: #e5ece7;
+}
+.role-panel h2 {
+  margin: 0.25rem 0 1rem;
+}
+.role-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.7rem;
+}
+.role-grid button {
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: #fff;
+  cursor: pointer;
+}
+.dashboard-strip {
+  margin: 1rem clamp(1rem, 3vw, 3rem);
+  padding: 1rem 1.25rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: #fff;
+}
+.dashboard-strip span {
+  display: block;
+  color: #647178;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.dashboard-strip p {
+  margin: 0;
+}
 a {
   color: inherit;
 }

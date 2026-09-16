@@ -55,6 +55,8 @@ Build onboarding for student, parent, owner/manager and professional accounts. A
 
 Done when each role lands on its dashboard and pending roles cannot access approved actions.
 
+Status: partial — authenticated demo users can choose a persisted role and receive a role-specific dashboard state; owner/professional roles remain pending review. Full dashboards, multi-role memberships and reviewer approval arrive in their workflow phases.
+
 ## Phase 05 — Real property discovery intake
 
 Build candidate ingestion through owner submission, missing-property reports, reviewer entry and CSV import. Add address normalization, geocoding, source metadata and duplicate suggestions.

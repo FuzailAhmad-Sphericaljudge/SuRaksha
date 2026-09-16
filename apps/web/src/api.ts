@@ -75,3 +75,18 @@ export async function logoutDemoAccount() {
   if (!response.ok && response.status !== 204)
     throw new Error('Logout failed.');
 }
+
+export async function saveOnboarding(
+  role: 'student' | 'parent_guardian' | 'owner_manager' | 'professional',
+): Promise<SessionResponse> {
+  const response = await fetch('/api/onboarding', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ role }),
+  });
+  const body = await response.json();
+  if (!response.ok)
+    throw new Error(body?.error?.message ?? 'Onboarding failed.');
+  return sessionResponseSchema.parse(body);
+}

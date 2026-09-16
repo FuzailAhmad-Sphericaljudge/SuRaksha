@@ -18,6 +18,7 @@ import {
   loginDemoAccount,
   logoutDemoAccount,
   registerDemoAccount,
+  saveOnboarding,
 } from './api';
 import './styles.css';
 
@@ -180,6 +181,25 @@ function App() {
     setSession({ authenticated: false });
   }
 
+  async function chooseRole(
+    role: 'student' | 'parent_guardian' | 'owner_manager' | 'professional',
+  ) {
+    try {
+      setSession(await saveOnboarding(role));
+    } catch (error) {
+      setAuthError(
+        error instanceof Error ? error.message : 'Onboarding failed.',
+      );
+    }
+  }
+
+  const roleLabels = {
+    student: 'Student',
+    parent_guardian: 'Parent / guardian',
+    owner_manager: 'Owner / manager',
+    professional: 'Safety professional',
+  } as const;
+
   return (
     <div className="shell">
       {mode === 'demo' && (
@@ -254,6 +274,35 @@ function App() {
           </button>
           {authError && <p role="alert">{authError}</p>}
         </form>
+      )}
+      {session.authenticated && !session.profile && (
+        <section className="role-panel" aria-labelledby="role-title">
+          <p className="kicker">Account setup</p>
+          <h2 id="role-title">How will you use SafePG?</h2>
+          <div className="role-grid">
+            {(Object.keys(roleLabels) as Array<keyof typeof roleLabels>).map(
+              (role) => (
+                <button key={role} onClick={() => void chooseRole(role)}>
+                  {roleLabels[role]}
+                </button>
+              ),
+            )}
+          </div>
+          {authError && <p role="alert">{authError}</p>}
+        </section>
+      )}
+      {session.authenticated && session.profile && (
+        <section className="dashboard-strip" aria-label="Account dashboard">
+          <div>
+            <span>Your dashboard</span>
+            <strong>{roleLabels[session.profile.role]}</strong>
+          </div>
+          <p>
+            {session.profile.reviewStatus === 'pending_review'
+              ? 'Review pending — restricted actions stay locked.'
+              : 'Account active — your workspace is ready.'}
+          </p>
+        </section>
       )}
       <main id="top">
         <section className="hero" aria-labelledby="hero-title">

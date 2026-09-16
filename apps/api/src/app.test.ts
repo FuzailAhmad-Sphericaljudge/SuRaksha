@@ -116,7 +116,23 @@ describe('API foundation', () => {
     ).toMatchObject({
       authenticated: true,
       user: { email: 'student@example.test' },
+      profile: null,
     });
+    const onboarding = await app.inject({
+      method: 'POST',
+      url: '/api/onboarding',
+      headers: { cookie },
+      payload: { role: 'student' },
+    });
+    expect(onboarding.statusCode).toBe(200);
+    expect(onboarding.json().profile).toEqual({
+      role: 'student',
+      reviewStatus: 'active',
+    });
+    expect(
+      (await app.inject({ url: '/api/session', headers: { cookie } })).json()
+        .profile,
+    ).toEqual({ role: 'student', reviewStatus: 'active' });
     expect(
       (
         await app.inject({
@@ -129,6 +145,32 @@ describe('API foundation', () => {
     expect(
       (await app.inject({ url: '/api/session', headers: { cookie } })).json(),
     ).toEqual({ authenticated: false });
+    database.close();
+  });
+
+  it('keeps owner onboarding pending review', async () => {
+    const database = openDatabase(':memory:');
+    const app = createApp({ mode: 'demo', database });
+    apps.push(app);
+    const registration = await app.inject({
+      method: 'POST',
+      url: '/api/auth/register',
+      payload: {
+        displayName: 'Demo Owner',
+        email: 'owner@example.test',
+        password: 'safe-password',
+      },
+    });
+    const onboarding = await app.inject({
+      method: 'POST',
+      url: '/api/onboarding',
+      headers: { cookie: registration.headers['set-cookie'] },
+      payload: { role: 'owner_manager' },
+    });
+    expect(onboarding.json().profile).toEqual({
+      role: 'owner_manager',
+      reviewStatus: 'pending_review',
+    });
     database.close();
   });
 
