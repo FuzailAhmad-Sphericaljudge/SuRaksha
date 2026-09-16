@@ -23,6 +23,8 @@ Audit the current prototype, preserve useful design/contracts and replace milest
 
 Done when the team has a test checklist for every role and no future phase can be marked complete from schemas alone.
 
+Status: complete — the current gaps and browser acceptance gates are recorded in `docs/ACCEPTANCE.md` for every user and operator role.
+
 ## Phase 01 — Environment and mode boundary
 
 Add validated server configuration for `demo` and `production`, expose mode in session/bootstrap responses, display a persistent demo banner and prevent client-side mode overrides.
