@@ -96,6 +96,8 @@ Depends on 11. Category findings, unresolved issues, media gallery, source/fresh
 
 Done when: missing data reads as unknown, serious findings are not hidden by aggregate scores and public media obeys moderation decisions.
 
+Status: foundation complete — profiles represent every safety category, preserve unknown states, require source/freshness for known findings and accept only public media derivatives.
+
 ## Phase 13 — Owner action and repair workflow
 
 Depends on 08/11. Assign responsibility, target dates, owner responses, repair plans and before/after proof. Introduce overdue handling without automatic safety decisions.

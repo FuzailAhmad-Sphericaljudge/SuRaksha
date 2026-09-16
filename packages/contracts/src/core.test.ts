@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEMO_NOTICE,
   auditEntrySchema,
+  buildingProfileSchema,
   canTransitionWorkflow,
   demoArea,
   demoBuilding,
@@ -32,6 +33,46 @@ const createdAt = '2026-09-16T08:00:00.000Z';
 const updatedAt = '2026-09-16T09:00:00.000Z';
 
 describe('fictional property fixtures', () => {
+  it('keeps missing profile evidence explicitly unknown', () => {
+    const categories = [
+      'fire_safety',
+      'electrical',
+      'structural',
+      'water_ingress',
+      'blocked_access',
+      'overcrowding',
+      'sanitation',
+      'other_safety',
+    ] as const;
+    const profile = {
+      buildingId: demoBuilding.id,
+      generatedAt: updatedAt,
+      findings: categories.map((category) => ({
+        category,
+        status: 'unknown' as const,
+        openReportCount: 0,
+        highestSeverity: 'unassessed' as const,
+        lastReviewedAt: null,
+        sourceLabel: null,
+      })),
+      publicMediaKeys: [],
+    };
+    expect(buildingProfileSchema.safeParse(profile).success).toBe(true);
+    expect(
+      buildingProfileSchema.safeParse({
+        ...profile,
+        findings: profile.findings.map((finding, index) =>
+          index === 0 ? { ...finding, openReportCount: 1 } : finding,
+        ),
+      }).success,
+    ).toBe(false);
+    expect(
+      buildingProfileSchema.safeParse({
+        ...profile,
+        publicMediaKeys: ['restricted/original.jpg'],
+      }).success,
+    ).toBe(false);
+  });
   it('parses every fixture and cannot be represented as live data', () => {
     expect(DEMO_NOTICE).toContain('Fictional demonstration data');
     expect(propertySchema.parse(demoProperty).dataMode).toBe('demo');

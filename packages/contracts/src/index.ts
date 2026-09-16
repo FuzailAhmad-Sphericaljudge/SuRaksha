@@ -8,6 +8,7 @@ export * from './evidence.js';
 export * from './fixtures.js';
 export * from './identity.js';
 export * from './property.js';
+export * from './profile.js';
 export * from './report.js';
 export * from './review.js';
 
