@@ -22,6 +22,7 @@ import {
   professionalCredentialUsable,
   type ProfessionalCredential,
   reportSchema,
+  reportDraftSchema,
 } from './index.js';
 
 const id = (suffix: number) =>
@@ -145,6 +146,31 @@ describe('roles and claims', () => {
 });
 
 describe('report states and transitions', () => {
+  it('requires a location scoped draft before submission', () => {
+    const draft = {
+      propertyId: demoProperty.id,
+      buildingId: demoBuilding.id,
+      areaId: null,
+      category: 'sanitation',
+      title: 'Shared washroom leak',
+      description:
+        'Water pools beside the shared washroom entrance every morning.',
+      evidenceIds: [id(5)],
+      visibility: 'private_review',
+    };
+    expect(reportDraftSchema.safeParse(draft).success).toBe(true);
+    expect(
+      reportDraftSchema.safeParse({ ...draft, evidenceIds: [id(5), id(5)] })
+        .success,
+    ).toBe(false);
+    expect(
+      reportDraftSchema.safeParse({
+        ...draft,
+        visibility: 'public_redacted',
+        evidenceIds: [],
+      }).success,
+    ).toBe(false);
+  });
   it('keeps workflow, verification and severity independent', () => {
     expect(
       reportSchema.safeParse({ ...demoReport, severity: 'high' }).success,

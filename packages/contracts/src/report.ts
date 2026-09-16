@@ -90,6 +90,35 @@ export const reportSchema = z
         path: ['mergedIntoReportId'],
       });
   });
+
+export const reportDraftSchema = z
+  .strictObject({
+    propertyId: entityIdSchema,
+    buildingId: entityIdSchema,
+    areaId: entityIdSchema.nullable(),
+    category: issueCategorySchema,
+    title: z.string().trim().min(5).max(140),
+    description: z.string().trim().min(20).max(4000),
+    evidenceIds: z.array(entityIdSchema).max(12),
+    visibility: z.enum(['private_review', 'public_redacted', 'confidential']),
+  })
+  .superRefine((value, context) => {
+    if (new Set(value.evidenceIds).size !== value.evidenceIds.length)
+      context.addIssue({
+        code: 'custom',
+        message: 'Evidence cannot be duplicated',
+        path: ['evidenceIds'],
+      });
+    if (
+      value.visibility === 'public_redacted' &&
+      value.evidenceIds.length === 0
+    )
+      context.addIssue({
+        code: 'custom',
+        message: 'Public reports require evidence for redaction review',
+        path: ['evidenceIds'],
+      });
+  });
 const workflowTransitions: Record<
   z.infer<typeof workflowStatusSchema>,
   readonly z.infer<typeof workflowStatusSchema>[]
@@ -110,5 +139,6 @@ export function canTransitionWorkflow(
   return workflowTransitions[from].includes(to);
 }
 export type Report = z.infer<typeof reportSchema>;
+export type ReportDraft = z.infer<typeof reportDraftSchema>;
 export type WorkflowStatus = z.infer<typeof workflowStatusSchema>;
 export type VerificationStatus = z.infer<typeof verificationStatusSchema>;

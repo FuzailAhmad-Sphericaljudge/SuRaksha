@@ -80,6 +80,8 @@ Depends on 06/09. Building/floor/area selection, categories, descriptions, annot
 
 Done when: a submitted report persists at the correct location, survives refresh and shares its evidence record with the property profile.
 
+Status: foundation complete — report drafts require property/building location, category, description, visibility and deduplicated evidence references.
+
 ## Phase 11 — Moderation, corroboration and duplicate merging
 
 Depends on 10. Evidence review queue, public/private visibility, independent supporting reports, reversible merge links, abuse reports and owner disputes.
