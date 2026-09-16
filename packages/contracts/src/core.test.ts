@@ -12,10 +12,14 @@ import {
   evidenceSchema,
   floorAreaSchema,
   inspectionSchema,
+  membershipCanManageProperty,
   membershipSchema,
   paginationQuerySchema,
   propertyClaimSchema,
   propertySchema,
+  professionalCredentialSchema,
+  professionalCredentialUsable,
+  type ProfessionalCredential,
   reportSchema,
 } from './index.js';
 
@@ -109,7 +113,7 @@ describe('roles and claims', () => {
       decisionReason: null,
       createdAt,
       updatedAt,
-    } as const;
+    };
     expect(propertyClaimSchema.safeParse(claim).success).toBe(true);
     expect(
       propertyClaimSchema.safeParse({ ...claim, status: 'approved' }).success,
@@ -123,6 +127,19 @@ describe('roles and claims', () => {
         decisionReason: 'Management documents reviewed.',
       }).success,
     ).toBe(true);
+  });
+
+  it('only grants property management after an approved claim', () => {
+    expect(membershipCanManageProperty(membership, demoProperty.id)).toBe(
+      false,
+    );
+    const owner = {
+      ...membership,
+      role: 'owner_manager',
+      assurance: 'management_claim_approved',
+    } as const;
+    expect(membershipCanManageProperty(owner, demoProperty.id)).toBe(true);
+    expect(membershipCanManageProperty(owner, demoBuilding.id)).toBe(false);
   });
 });
 
@@ -241,6 +258,65 @@ describe('evidence and inspection boundaries', () => {
       inspectionSchema.safeParse({
         ...inspection,
         scope: ['fire_safety', 'fire_safety'],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('limits professional credentials by specialty, validity and conflicts', () => {
+    const credential: ProfessionalCredential = {
+      id: id(8),
+      userId: id(9),
+      specialties: ['fire_safety'],
+      documentEvidenceIds: [id(5)],
+      status: 'approved',
+      reviewedByUserId: id(4),
+      reviewedAt: updatedAt,
+      decisionReason: 'License checked.',
+      validFrom: createdAt,
+      validUntil: '2027-09-16T08:00:00.000Z',
+      conflictPropertyIds: [],
+      createdAt,
+      updatedAt,
+    };
+    expect(professionalCredentialSchema.safeParse(credential).success).toBe(
+      true,
+    );
+    expect(
+      professionalCredentialUsable(
+        credential,
+        demoProperty.id,
+        'fire_safety',
+        updatedAt,
+      ),
+    ).toBe(true);
+    expect(
+      professionalCredentialUsable(
+        credential,
+        demoProperty.id,
+        'electrical',
+        updatedAt,
+      ),
+    ).toBe(false);
+    expect(
+      professionalCredentialUsable(
+        { ...credential, conflictPropertyIds: [demoProperty.id] },
+        demoProperty.id,
+        'fire_safety',
+        updatedAt,
+      ),
+    ).toBe(false);
+    expect(
+      professionalCredentialUsable(
+        { ...credential, validUntil: createdAt },
+        demoProperty.id,
+        'fire_safety',
+        updatedAt,
+      ),
+    ).toBe(false);
+    expect(
+      professionalCredentialSchema.safeParse({
+        ...credential,
+        reviewedByUserId: null,
       }).success,
     ).toBe(false);
   });

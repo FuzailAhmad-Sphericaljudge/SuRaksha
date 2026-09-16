@@ -64,6 +64,8 @@ Depends on 07. Private document submission, reviewer queues, claim decisions, pr
 
 Done when: unapproved owners cannot manage a property; expired/out-of-scope inspectors cannot certify findings; decisions are audited.
 
+Status: complete — contracts and pure authorization helpers cover claim assurance, reviewer decision completeness, credential scope, expiry and conflicts. Persistence and private upload storage remain later phases.
+
 ## Phase 09 — Secure photo/video evidence pipeline
 
 Depends on 07. Private storage, authorized uploads, type/size limits, upload progress/retry, video processing, evidence timestamps, public derivatives/redaction and retention controls.

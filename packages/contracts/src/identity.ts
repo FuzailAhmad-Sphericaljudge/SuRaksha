@@ -69,6 +69,18 @@ export const membershipSchema = z
       });
   });
 
+export function membershipCanManageProperty(
+  membership: z.infer<typeof membershipSchema>,
+  propertyId: string,
+): boolean {
+  return (
+    membership.role === 'owner_manager' &&
+    membership.status === 'active' &&
+    membership.assurance === 'management_claim_approved' &&
+    membership.propertyId === propertyId
+  );
+}
+
 export type Role = z.infer<typeof roleSchema>;
 export type User = z.infer<typeof userSchema>;
 export type Membership = z.infer<typeof membershipSchema>;

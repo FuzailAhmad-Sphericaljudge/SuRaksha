@@ -16,6 +16,6 @@ Students locate a building, inspect available evidence, report a specific issue 
 
 ## Current status
 
-Phases 01–07 are complete: product planning, engineering foundation, core contracts, reference-matched responsive design, fictional architectural assets, cinematic motion, discovery and the server-side authentication boundary. Search, profiles and report actions currently use clearly fictional preview content; no live verification service or government integration exists yet. Remote delivery is reported separately after each successful push.
+Phases 01–08 are complete: product planning, engineering foundation, core contracts, reference-matched responsive design, fictional architectural assets, cinematic motion, discovery, the server-side authentication boundary, and owner/credential review rules. Search, profiles and report actions currently use clearly fictional preview content; no live verification service or government integration exists yet. Remote delivery is reported separately after each successful push.
 
 Use Node.js 24 and npm 11. Run `npm ci`, then `npm run dev`. Run `npm run verify` before pushing. Provider choices are documented; no external infrastructure is provisioned. The initial screen is a foundation preview, not the final 3D design.
