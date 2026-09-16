@@ -1,13 +1,34 @@
-import { StrictMode, useEffect, useState, type FormEvent } from 'react';
+import {
+  StrictMode,
+  useEffect,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+} from 'react';
 import { createRoot } from 'react-dom/client';
 import { DEMO_NOTICE, demoProperty } from '@suraksha/contracts';
 import { fetchHealth } from './api';
 import './styles.css';
 
 const spaces = [
-  [demoProperty.name, 'Paying guest', 'Sample Nagar · New Delhi'],
-  ['Nayi Disha Demo Hostel', 'Hostel', 'Example Enclave · New Delhi'],
-  ['Udaan Demo Learning Centre', 'Coaching', 'Model Colony · New Delhi'],
+  [
+    demoProperty.name,
+    'Paying guest',
+    'Sample Nagar · New Delhi',
+    '/images/hero-student-housing.webp',
+  ],
+  [
+    'Nayi Disha Demo Hostel',
+    'Hostel',
+    'Example Enclave · New Delhi',
+    '/images/demo-hostel-courtyard.webp',
+  ],
+  [
+    'Udaan Demo Learning Centre',
+    'Coaching',
+    'Model Colony · New Delhi',
+    '/images/demo-coaching-frontage.webp',
+  ],
 ] as const;
 
 function Arrow() {
@@ -33,6 +54,39 @@ function App() {
     return () => controller.abort();
   }, []);
 
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const elements = document.querySelectorAll<HTMLElement>('[data-reveal]');
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries)
+          if (entry.isIntersecting) {
+            entry.target.classList.add('revealed');
+            observer.unobserve(entry.target);
+          }
+      },
+      { threshold: 0.14 },
+    );
+    elements.forEach((element) => observer.observe(element));
+    const hero = document.querySelector<HTMLElement>('.hero');
+    let frame = 0;
+    const update = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() =>
+        hero?.style.setProperty(
+          '--hero-shift',
+          `${Math.min(window.scrollY * 0.12, 70)}px`,
+        ),
+      );
+    };
+    window.addEventListener('scroll', update, { passive: true });
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('scroll', update);
+      cancelAnimationFrame(frame);
+    };
+  }, []);
+
   function search(event: FormEvent) {
     event.preventDefault();
     const value = query.trim();
@@ -49,6 +103,9 @@ function App() {
 
   return (
     <div className="shell">
+      <div className="intro-screen" aria-hidden="true">
+        <span>SafePG.</span>
+      </div>
       <header className="topbar">
         <a className="brand" href="#top">
           SafePG<span>.</span>
@@ -65,7 +122,7 @@ function App() {
       <main id="top">
         <section className="hero" aria-labelledby="hero-title">
           <img
-            src="/images/hero-student-housing.png"
+            src="/images/hero-student-housing.webp"
             alt="Fictional modern student residence at dusk"
             fetchPriority="high"
           />
@@ -98,7 +155,7 @@ function App() {
           </div>
         </section>
 
-        <section className="statement" id="purpose">
+        <section className="statement" id="purpose" data-reveal>
           <p className="index">01 / Purpose</p>
           <h2>
             One clear record for every concern—from the first report to the
@@ -111,7 +168,7 @@ function App() {
           </p>
         </section>
 
-        <section className="process" id="process">
+        <section className="process" id="process" data-reveal>
           <div>
             <p className="index">02 / How it works</p>
             <h2>Evidence before assumptions.</h2>
@@ -154,7 +211,7 @@ function App() {
           </ol>
         </section>
 
-        <section className="profiles" id="profiles">
+        <section className="profiles" id="profiles" data-reveal>
           <div className="section-head">
             <div>
               <p className="index">03 / Explore</p>
@@ -167,15 +224,16 @@ function App() {
             <p>{DEMO_NOTICE}</p>
           </div>
           <div className="cards">
-            {spaces.map(([name, type, area], i) => (
-              <article className="card" key={name}>
+            {spaces.map(([name, type, area, image], i) => (
+              <article
+                className="card"
+                key={name}
+                data-reveal
+                style={{ '--reveal-delay': `${i * 90}ms` } as CSSProperties}
+              >
                 <a href="#resolution">
                   <div className="photo">
-                    <img
-                      src="/images/hero-student-housing.png"
-                      alt=""
-                      loading={i ? 'lazy' : 'eager'}
-                    />
+                    <img src={image} alt="" loading={i ? 'lazy' : 'eager'} />
                     <span>0{i + 1}</span>
                   </div>
                   <div className="card-copy">
@@ -191,7 +249,7 @@ function App() {
           </div>
         </section>
 
-        <section className="resolution" id="resolution">
+        <section className="resolution" id="resolution" data-reveal>
           <div>
             <p className="index">04 / Resolution</p>
             <h2>A report should lead somewhere.</h2>

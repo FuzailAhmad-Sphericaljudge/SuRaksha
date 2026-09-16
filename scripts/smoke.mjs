@@ -46,6 +46,17 @@ try {
     });
     assert.equal(response.status, 200);
   }
+  for (const image of [
+    '/images/hero-student-housing.webp',
+    '/images/demo-hostel-courtyard.webp',
+    '/images/demo-coaching-frontage.webp',
+  ]) {
+    const response = await fetch(`${origin}${image}`, {
+      signal: AbortSignal.timeout(5_000),
+    });
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-type') ?? '', /^image\/webp/);
+  }
   const health = await fetch(`${origin}/api/health`, {
     signal: AbortSignal.timeout(5_000),
   });
@@ -59,7 +70,7 @@ try {
     assert.equal((await response.json()).error.code, 'NOT_FOUND');
   }
   console.log(
-    'Production smoke passed: page, assets, API and private-path rejection.',
+    'Production smoke passed: page, scripts, images, API and private-path rejection.',
   );
 } finally {
   clearTimeout(timer);

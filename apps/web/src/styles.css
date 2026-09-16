@@ -38,6 +38,53 @@ svg {
   margin: auto;
   overflow: hidden;
 }
+.intro-screen {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: white;
+  background: #6f91a4;
+  pointer-events: none;
+  animation: intro-away 1.25s cubic-bezier(0.76, 0, 0.24, 1) forwards;
+}
+.intro-screen span {
+  font-size: clamp(2rem, 5vw, 4rem);
+  font-weight: 600;
+  letter-spacing: -0.07em;
+  animation: intro-word 0.9s ease both;
+}
+@keyframes intro-away {
+  0%,
+  58% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(-101%);
+  }
+}
+@keyframes intro-word {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+[data-reveal] {
+  opacity: 0;
+  transform: translateY(34px);
+  transition:
+    opacity 0.8s ease var(--reveal-delay, 0ms),
+    transform 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) var(--reveal-delay, 0ms);
+}
+[data-reveal].revealed {
+  opacity: 1;
+  transform: translateY(0);
+}
 .topbar {
   height: 78px;
   padding: 0 clamp(1rem, 3vw, 3rem);
@@ -87,6 +134,14 @@ svg {
 }
 .hero > img {
   object-fit: cover;
+  transform: translateY(var(--hero-shift, 0)) scale(1.08);
+  animation: hero-arrive 1.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+@keyframes hero-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(1.14);
+  }
 }
 .shade {
   background:
@@ -311,7 +366,9 @@ svg {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform 0.7s ease;
+  transition:
+    transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1),
+    filter 0.7s ease;
 }
 .card:nth-child(2) img {
   object-position: left;
@@ -321,6 +378,7 @@ svg {
 }
 .card a:hover img {
   transform: scale(1.04);
+  filter: saturate(1.08) contrast(1.02);
 }
 .photo span {
   position: absolute;
@@ -575,5 +633,16 @@ footer > small {
   *:after {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+  .intro-screen {
+    display: none;
+  }
+  [data-reveal] {
+    opacity: 1;
+    transform: none;
+  }
+  .hero > img {
+    animation: none;
+    transform: none;
   }
 }

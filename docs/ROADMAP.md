@@ -40,6 +40,8 @@ Depends on 04. Review reference transitions more closely; source/create authoriz
 
 Done when: assets load reliably, reduced-motion/static fallback works, and mobile loading remains usable. Do not claim the source reference uses Three.js without evidence.
 
+Status: complete. Three original fictional architectural scenes are stored locally as optimized WebP assets. The page now has a short branded intro transition, hero arrival and restrained scroll parallax, one-time section reveals, staggered property cards and richer hover motion. Reduced-motion users receive static content without the intro or parallax. The implementation remains DOM/CSS motion; it does not claim that the reference or this phase uses Three.js.
+
 ## Phase 06 — Building registry and discovery
 
 Depends on 03/04. Address search, property type filters, map/list identity confirmation, campus/building relationships and public profile routes. Begin with demo/local pilot data; record data provenance.
