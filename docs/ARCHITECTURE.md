@@ -12,7 +12,7 @@ Use a modular monolith: React/Vite web client, one Fastify Node.js 24 API, and a
 | `apps/api`           | Configuration, public API, future authorization and server integrations       |
 | `packages/contracts` | Public/module boundary schemas and inferred types, with no environment access |
 
-Phase 02 adds only liveness and error contracts. Property, evidence and verification schemas belong to Phase 03. There are no database writes, migrations, autonomous jobs or FAULTLINE evaluator endpoints.
+Phase 02 added only liveness and error contracts. Phase 03 adds property, evidence and verification domain contracts without database writes or migrations.
 
 ## Selected integration direction
 
@@ -36,10 +36,6 @@ The web client has no environment variables or provider SDKs. Do not add secrets
 `GET /api/health` returns `{ service: 'suraksha-api', status: 'ok', timestamp: '<UTC ISO time>' }` with `Cache-Control: no-store`. This confirms process liveness only, not database readiness or building safety. Repeated reads have no side effects. Unsupported routes and methods return a structured error with a server-generated request ID. Future retries on mutation routes need explicit idempotency contracts; none exist yet.
 
 SIGINT/SIGTERM close Fastify gracefully. Production startup fails if the web bundle is missing. Current static serving supports the foundation root page; client-side routing/fallback must be added with real profile routes in later phases.
-
-## Ownership and issue scope
-
-The user explicitly requested Phase 02 for their confirmed SuRaksha repository, authorizing this bounded foundation work across its new workspaces. No GitHub issue was assigned. Supplied FAULTLINE ownership rules remain relevant for work on that separate project; this phase does not change its files, evaluator contract or release. Future migrations, autonomous scheduling and production release still require the applicable joint decisions before implementation/activation.
 
 ## Verification
 

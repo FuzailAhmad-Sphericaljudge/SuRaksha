@@ -63,5 +63,3 @@ Start with explicitly labeled demo properties and one pilot locality. Real publi
 ## Architecture constraints
 
 Node.js 24; npm workspaces; strict TypeScript; shared Zod boundaries in packages/contracts. A single application/backend architecture, no autonomous multi-agent system. No browser secrets or browser-side authority/verification decisions. Proposed services: web application, server API, database, private object storage and controlled background jobs. Final providers selected in Phase 02.
-
-The provided contributor instructions refer to a separate FAULTLINE product and ownership split. They do not imply that SafePG needs agent/init or agent/feed endpoints. Preserve their engineering baseline and confirm applicable ownership/issue references before changes to jointly controlled contracts, migrations, scheduling or release.

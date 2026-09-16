@@ -9,6 +9,7 @@ Students locate a building, inspect available evidence, report a specific issue 
 - [Reference design brief](docs/DESIGN.md)
 - [Delivery workflow](docs/DELIVERY.md)
 - [Architecture and provider decisions](docs/ARCHITECTURE.md)
+- [Core domain contracts](docs/CONTRACTS.md)
 - [Local development](docs/DEVELOPMENT.md)
 
 ## Current status

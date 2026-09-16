@@ -22,7 +22,9 @@ Status: complete. Node.js 24/npm workspaces, strict TypeScript, React/Vite web, 
 
 Depends on 02. Model building identity, property types, floors/areas, users/memberships, reports, evidence, inspections, claims and audit entries. Define timestamps, pagination, errors and separate workflow/verification/severity states. Use clearly fictional fixtures.
 
-Done when: invalid boundaries and forbidden state transitions are rejected; demo data cannot be confused with live inspection results. Applicable joint schema approval is resolved before migrations.
+Done when: invalid boundaries and forbidden state transitions are rejected; demo data cannot be confused with live inspection results.
+
+Status: complete. Runtime schemas now cover properties/buildings/areas, users and scoped memberships, reports, evidence, claims, inspections, audit entries, pagination and UTC timestamps. Workflow, verification and severity remain independent; invalid and skipped transitions are rejected. Fictional fixtures require `dataMode: "demo"`, and no persistence or migration was introduced. Nineteen tests, strict typechecks, production build and compiled-server smoke checks pass.
 
 ## Phase 04 — Reference-matched visual foundation
 

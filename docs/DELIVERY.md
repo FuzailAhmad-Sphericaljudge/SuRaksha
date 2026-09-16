@@ -20,4 +20,4 @@ Use real implementation-sized phases. Do not create empty commits, artificially 
 
 Application verification should include typecheck, relevant tests and build. Test contracts, authorization boundaries, timestamps, failure/retry, duplicate and no-op behavior as these become implemented. Use user-visible workflow checks for uploads, owner claims, private sharing and inspection closure. Never substitute tests of implementation details for actual behavior.
 
-Deploy/release is a separate milestone with applicable joint ownership/release decisions. A Git push does not automatically mean a public production release.
+Deploy/release is a separate milestone. A Git push does not automatically mean a public production release.
