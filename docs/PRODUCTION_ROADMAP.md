@@ -63,6 +63,8 @@ Build candidate ingestion through owner submission, missing-property reports, re
 
 Done when a real candidate can be submitted, reviewed and found by locality without being labelled verified.
 
+Status: partial — authenticated users can submit real property candidates, records persist after refresh and appear as clearly unverified candidates. Address normalization, geocoding, reviewer approval, CSV import and duplicate detection remain pending.
+
 ## Phase 06 — Search and map
 
 Connect search, filters, pagination and map bounds to the database. Show source, freshness and verification state on every result.

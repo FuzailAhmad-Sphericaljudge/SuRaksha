@@ -20,6 +20,7 @@ describe('database persistence and isolation', () => {
       id: 'candidate-1',
       name: 'Student Home',
       locality: 'Kota',
+      propertyType: 'paying_guest',
       source: 'owner_submission',
       createdAt: '2026-09-16T10:00:00.000Z',
     });
@@ -37,6 +38,7 @@ describe('database persistence and isolation', () => {
       id: 'demo-1',
       name: 'Fictional PG',
       locality: 'Sample Nagar',
+      propertyType: 'hostel',
       source: 'demo_seed',
       createdAt: '2026-09-16T10:00:00.000Z',
     });

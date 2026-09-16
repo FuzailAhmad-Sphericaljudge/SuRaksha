@@ -15,10 +15,13 @@ import {
   fetchBootstrap,
   fetchHealth,
   fetchSession,
+  fetchCandidates,
+  createCandidate,
   loginDemoAccount,
   logoutDemoAccount,
   registerDemoAccount,
   saveOnboarding,
+  type PropertyCandidate,
 } from './api';
 import './styles.css';
 
@@ -71,6 +74,8 @@ function App() {
   const [authOpen, setAuthOpen] = useState(false);
   const [authKind, setAuthKind] = useState<'register' | 'login'>('register');
   const [authError, setAuthError] = useState('');
+  const [candidates, setCandidates] = useState<PropertyCandidate[]>([]);
+  const [candidateMessage, setCandidateMessage] = useState('');
   const [query, setQuery] = useState('');
   const [message, setMessage] = useState(
     'Search is a visual preview. No live properties are indexed.',
@@ -86,11 +91,13 @@ function App() {
       fetchHealth(controller.signal),
       fetchBootstrap(controller.signal),
       fetchSession(controller.signal),
+      fetchCandidates(controller.signal),
     ])
-      .then(([, bootstrap, activeSession]) => {
+      .then(([, bootstrap, activeSession, loadedCandidates]) => {
         setConnection('connected');
         setMode(bootstrap.mode);
         setSession(activeSession);
+        setCandidates(loadedCandidates);
       })
       .catch(() => setConnection('unavailable'));
     return () => controller.abort();
@@ -200,6 +207,31 @@ function App() {
     professional: 'Safety professional',
   } as const;
 
+  async function submitCandidate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCandidateMessage('');
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    try {
+      const candidate = await createCandidate({
+        name: String(data.get('name')),
+        locality: String(data.get('locality')),
+        propertyType: String(
+          data.get('propertyType'),
+        ) as PropertyCandidate['propertyType'],
+      });
+      setCandidates((current) => [candidate, ...current]);
+      setCandidateMessage(
+        'Candidate saved. It is unverified and queued for review.',
+      );
+      form.reset();
+    } catch (error) {
+      setCandidateMessage(
+        error instanceof Error ? error.message : 'Submission failed.',
+      );
+    }
+  }
+
   return (
     <div className="shell">
       {mode === 'demo' && (
@@ -302,6 +334,52 @@ function App() {
               ? 'Review pending — restricted actions stay locked.'
               : 'Account active — your workspace is ready.'}
           </p>
+        </section>
+      )}
+      {session.authenticated && session.profile && (
+        <section className="candidate-intake" aria-labelledby="candidate-title">
+          <div>
+            <p className="kicker">Real data intake</p>
+            <h2 id="candidate-title">Know a missing student space?</h2>
+            <p>
+              Submit its public name and locality. It will remain unverified
+              until review.
+            </p>
+          </div>
+          <form onSubmit={submitCandidate}>
+            <input
+              name="name"
+              placeholder="PG, hostel or coaching name"
+              minLength={3}
+              required
+            />
+            <input
+              name="locality"
+              placeholder="Locality and city"
+              minLength={3}
+              required
+            />
+            <select name="propertyType" defaultValue="paying_guest">
+              <option value="paying_guest">Paying guest</option>
+              <option value="hostel">Hostel</option>
+              <option value="coaching_institute">Coaching institute</option>
+            </select>
+            <button type="submit">Submit candidate</button>
+            {candidateMessage && <p role="status">{candidateMessage}</p>}
+          </form>
+          <div className="candidate-list">
+            {candidates.length === 0 ? (
+              <p>No submitted candidates yet.</p>
+            ) : (
+              candidates.map((candidate) => (
+                <article key={candidate.id}>
+                  <span>Candidate · Unverified</span>
+                  <strong>{candidate.name}</strong>
+                  <p>{candidate.locality}</p>
+                </article>
+              ))
+            )}
+          </div>
         </section>
       )}
       <main id="top">

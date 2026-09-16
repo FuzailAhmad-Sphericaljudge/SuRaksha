@@ -90,3 +90,38 @@ export async function saveOnboarding(
     throw new Error(body?.error?.message ?? 'Onboarding failed.');
   return sessionResponseSchema.parse(body);
 }
+
+export type PropertyCandidate = {
+  id: string;
+  name: string;
+  locality: string;
+  propertyType: 'paying_guest' | 'hostel' | 'coaching_institute';
+  source: string;
+  createdAt: string;
+};
+
+export async function fetchCandidates(
+  signal?: AbortSignal,
+): Promise<PropertyCandidate[]> {
+  const response = await fetch('/api/candidates', {
+    ...(signal ? { signal } : {}),
+    cache: 'no-store',
+  });
+  if (!response.ok) throw new Error('Candidates unavailable.');
+  return (await response.json()) as PropertyCandidate[];
+}
+
+export async function createCandidate(
+  input: Pick<PropertyCandidate, 'name' | 'locality' | 'propertyType'>,
+): Promise<PropertyCandidate> {
+  const response = await fetch('/api/candidates', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const body = await response.json();
+  if (!response.ok)
+    throw new Error(body?.error?.message ?? 'Submission failed.');
+  return body as PropertyCandidate;
+}

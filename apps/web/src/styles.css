@@ -19,7 +19,8 @@ body {
   min-width: 320px;
 }
 button,
-input {
+input,
+select {
   font: inherit;
 }
 .account-button {
@@ -106,6 +107,76 @@ input {
 }
 .dashboard-strip p {
   margin: 0;
+}
+.candidate-intake {
+  margin: 1rem clamp(1rem, 3vw, 3rem);
+  padding: clamp(1.25rem, 3vw, 2.5rem);
+  border-radius: 1rem;
+  background: #dbe8ed;
+}
+.candidate-intake h2 {
+  margin: 0.3rem 0;
+}
+.candidate-intake form {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 0.8fr auto;
+  gap: 0.65rem;
+  margin: 1.25rem 0;
+}
+.candidate-intake input,
+.candidate-intake select,
+.candidate-intake button {
+  min-width: 0;
+  padding: 0.8rem;
+  border: 1px solid #aab9c0;
+  border-radius: 0.65rem;
+  background: #fff;
+}
+.candidate-intake button {
+  color: #fff;
+  background: var(--ink);
+  cursor: pointer;
+}
+.candidate-intake form p {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.candidate-list {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.7rem;
+}
+.candidate-list article {
+  padding: 1rem;
+  border: 1px solid #b8c7cd;
+  border-radius: 0.75rem;
+  background: #f9fbfa;
+}
+.candidate-list article span {
+  display: block;
+  color: #9b5222;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.candidate-list article strong {
+  display: block;
+  margin-top: 0.35rem;
+}
+.candidate-list article p {
+  margin: 0.25rem 0 0;
+}
+@media (max-width: 760px) {
+  .role-grid,
+  .candidate-list {
+    grid-template-columns: 1fr 1fr;
+  }
+  .candidate-intake form {
+    grid-template-columns: 1fr;
+  }
+  .dashboard-strip {
+    flex-direction: column;
+  }
 }
 a {
   color: inherit;

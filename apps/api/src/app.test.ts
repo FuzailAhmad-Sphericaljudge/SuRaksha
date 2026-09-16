@@ -133,6 +133,22 @@ describe('API foundation', () => {
       (await app.inject({ url: '/api/session', headers: { cookie } })).json()
         .profile,
     ).toEqual({ role: 'student', reviewStatus: 'active' });
+    const candidate = await app.inject({
+      method: 'POST',
+      url: '/api/candidates',
+      headers: { cookie },
+      payload: {
+        name: 'Real Student Hostel',
+        locality: 'Kota, Rajasthan',
+        propertyType: 'hostel',
+      },
+    });
+    expect(candidate.statusCode).toBe(201);
+    expect(candidate.json()).toMatchObject({
+      name: 'Real Student Hostel',
+      source: 'user_submission',
+    });
+    expect((await app.inject('/api/candidates')).json()).toHaveLength(1);
     expect(
       (
         await app.inject({

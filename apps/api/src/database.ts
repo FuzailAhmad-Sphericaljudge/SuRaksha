@@ -6,6 +6,7 @@ export type PropertyCandidateRecord = {
   id: string;
   name: string;
   locality: string;
+  propertyType: 'paying_guest' | 'hostel' | 'coaching_institute';
   source: string;
   createdAt: string;
 };
@@ -43,6 +44,16 @@ export function openDatabase(path: string) {
     INSERT OR IGNORE INTO schema_migrations(version, applied_at)
       VALUES (3, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
   `);
+  const candidateColumns = database
+    .prepare('PRAGMA table_info(property_candidates)')
+    .all() as Array<{ name: string }>;
+  if (!candidateColumns.some((column) => column.name === 'property_type'))
+    database.exec(
+      "ALTER TABLE property_candidates ADD COLUMN property_type TEXT NOT NULL DEFAULT 'paying_guest'",
+    );
+  database.exec(
+    "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (4, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+  );
   return database;
 }
 
@@ -84,12 +95,13 @@ export class PropertyCandidateRepository {
   save(record: PropertyCandidateRecord) {
     this.database
       .prepare(
-        'INSERT INTO property_candidates(id, name, locality, source, created_at) VALUES (?, ?, ?, ?, ?)',
+        'INSERT INTO property_candidates(id, name, locality, property_type, source, created_at) VALUES (?, ?, ?, ?, ?, ?)',
       )
       .run(
         record.id,
         record.name,
         record.locality,
+        record.propertyType,
         record.source,
         record.createdAt,
       );
@@ -97,7 +109,7 @@ export class PropertyCandidateRepository {
   list(): PropertyCandidateRecord[] {
     return this.database
       .prepare(
-        'SELECT id, name, locality, source, created_at AS createdAt FROM property_candidates ORDER BY created_at DESC, id ASC',
+        'SELECT id, name, locality, property_type AS propertyType, source, created_at AS createdAt FROM property_candidates ORDER BY created_at DESC, id ASC',
       )
       .all() as PropertyCandidateRecord[];
   }

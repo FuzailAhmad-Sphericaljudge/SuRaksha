@@ -12,7 +12,10 @@ import {
   sessionResponseSchema,
 } from '@suraksha/contracts';
 import { readWorkspaceIdentity } from './workspaceIdentity.js';
-import { AccountProfileRepository } from './database.js';
+import {
+  AccountProfileRepository,
+  PropertyCandidateRepository,
+} from './database.js';
 import {
   clearSessionCookie,
   loginDemoUser,
@@ -48,6 +51,11 @@ export function createApp(options: AppOptions = {}) {
       'owner_manager',
       'professional',
     ]),
+  });
+  const candidateSchema = z.strictObject({
+    name: z.string().trim().min(3).max(160),
+    locality: z.string().trim().min(3).max(120),
+    propertyType: z.enum(['paying_guest', 'hostel', 'coaching_institute']),
   });
   const currentUser = (headers: IncomingHttpHeaders) =>
     (database && mode === 'demo'
@@ -89,6 +97,49 @@ export function createApp(options: AppOptions = {}) {
   app.get('/api/bootstrap', async (_request, reply) => {
     reply.header('Cache-Control', 'no-store');
     return bootstrapResponseSchema.parse({ mode, demoData: mode === 'demo' });
+  });
+
+  app.get('/api/candidates', async (_request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    if (!database) return [];
+    return new PropertyCandidateRepository(database).list();
+  });
+
+  app.post('/api/candidates', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user)
+      return reply.code(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Sign-in is required.',
+          requestId: request.id,
+        },
+      });
+    if (!database)
+      return reply.code(503).send({
+        error: {
+          code: 'DATABASE_UNAVAILABLE',
+          message: 'Candidate intake is unavailable.',
+          requestId: request.id,
+        },
+      });
+    const parsed = candidateSchema.safeParse(request.body);
+    if (!parsed.success)
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Enter a valid property name, locality and type.',
+          requestId: request.id,
+        },
+      });
+    const record = {
+      id: randomUUID(),
+      ...parsed.data,
+      source: 'user_submission',
+      createdAt: now().toISOString(),
+    };
+    new PropertyCandidateRepository(database).save(record);
+    return reply.code(201).send(record);
   });
 
   app.get('/api/session', async (request, reply) => {
