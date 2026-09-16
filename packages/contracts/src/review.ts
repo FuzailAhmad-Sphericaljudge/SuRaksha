@@ -191,6 +191,23 @@ export function professionalCredentialUsable(
   );
 }
 
+export const reportMergeSchema = z
+  .strictObject({
+    sourceReportId: entityIdSchema,
+    targetReportId: entityIdSchema,
+    reviewedByUserId: entityIdSchema,
+    reason: nonEmptyTextSchema.max(1000),
+    mergedAt: utcTimestampSchema,
+  })
+  .superRefine((value, context) => {
+    if (value.sourceReportId === value.targetReportId)
+      context.addIssue({
+        code: 'custom',
+        message: 'A report cannot merge into itself',
+        path: ['targetReportId'],
+      });
+  });
+
 export const auditEntrySchema = z
   .strictObject({
     id: entityIdSchema,
@@ -242,3 +259,4 @@ export type AuditEntry = z.infer<typeof auditEntrySchema>;
 export type ProfessionalCredential = z.infer<
   typeof professionalCredentialSchema
 >;
+export type ReportMerge = z.infer<typeof reportMergeSchema>;

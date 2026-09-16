@@ -88,6 +88,8 @@ Depends on 10. Evidence review queue, public/private visibility, independent sup
 
 Done when: unreviewed private media never appears publicly, merging preserves provenance and report volume alone cannot award verified status.
 
+Status: foundation complete — reversible merge records require distinct reports, a reviewer, timestamp and reason. Persistent moderation queues remain pending.
+
 ## Phase 12 — Evidence-based building profiles
 
 Depends on 11. Category findings, unresolved issues, media gallery, source/freshness labels, verification explanations and issue history.

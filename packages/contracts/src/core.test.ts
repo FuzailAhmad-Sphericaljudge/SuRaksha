@@ -22,6 +22,7 @@ import {
   professionalCredentialUsable,
   type ProfessionalCredential,
   reportSchema,
+  reportMergeSchema,
   reportDraftSchema,
 } from './index.js';
 
@@ -373,6 +374,20 @@ describe('evidence and inspection boundaries', () => {
 });
 
 describe('audit and pagination boundaries', () => {
+  it('requires a reviewer and reason for duplicate report merges', () => {
+    const merge = {
+      sourceReportId: demoReport.id,
+      targetReportId: demoProperty.id,
+      reviewedByUserId: id(4),
+      reason: 'Same building and issue evidence.',
+      mergedAt: updatedAt,
+    };
+    expect(reportMergeSchema.safeParse(merge).success).toBe(true);
+    expect(
+      reportMergeSchema.safeParse({ ...merge, targetReportId: demoReport.id })
+        .success,
+    ).toBe(false);
+  });
   it('requires an actor for user actions and forbids system impersonation', () => {
     const audit = {
       id: id(7),
