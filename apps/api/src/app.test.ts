@@ -236,6 +236,61 @@ describe('API foundation', () => {
         })
       ).statusCode,
     ).toBe(409);
+    const reviewer = await app.inject({
+      method: 'POST',
+      url: '/api/auth/register',
+      payload: {
+        displayName: 'Demo Reviewer',
+        email: 'reviewer@suraksha.demo',
+        password: 'review-password',
+      },
+    });
+    const reviewerCookie = reviewer.headers['set-cookie'];
+    const queue = await app.inject({
+      url: '/api/reviewer/claims',
+      headers: { cookie: reviewerCookie },
+    });
+    expect(queue.json()).toHaveLength(1);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: `/api/reviewer/claims/${queue.json()[0].id}/decision`,
+          headers: { cookie: reviewerCookie },
+          payload: {
+            status: 'approved',
+            reason: 'Management connection checked in demo review.',
+          },
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(
+      (
+        await app.inject({
+          url: '/api/session',
+          headers: { cookie: registration.headers['set-cookie'] },
+        })
+      ).json().profile.reviewStatus,
+    ).toBe('active');
+    const building = await app.inject({
+      method: 'POST',
+      url: '/api/buildings',
+      headers: { cookie: registration.headers['set-cookie'] },
+      payload: {
+        candidateId: candidate.json().id,
+        name: 'Main Block',
+        floors: 4,
+      },
+    });
+    expect(building.statusCode).toBe(201);
+    expect(
+      (
+        await app.inject({
+          url: '/api/buildings/mine',
+          headers: { cookie: registration.headers['set-cookie'] },
+        })
+      ).json(),
+    ).toHaveLength(1);
     database.close();
   });
 

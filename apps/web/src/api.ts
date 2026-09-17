@@ -146,6 +146,7 @@ export type PropertyClaim = {
   evidenceNote: string;
   status: 'submitted' | 'under_review' | 'approved' | 'rejected' | 'withdrawn';
   createdAt: string;
+  reviewReason?: string | null;
 };
 
 export async function fetchMyClaims(): Promise<PropertyClaim[]> {
@@ -171,4 +172,58 @@ export async function createPropertyClaim(input: {
   if (!response.ok)
     throw new Error(body?.error?.message ?? 'Claim submission failed.');
   return body as PropertyClaim;
+}
+
+export async function fetchReviewerClaims(): Promise<PropertyClaim[]> {
+  const response = await fetch('/api/reviewer/claims', {
+    cache: 'no-store',
+    credentials: 'same-origin',
+  });
+  if (!response.ok) throw new Error('Reviewer queue unavailable.');
+  return (await response.json()) as PropertyClaim[];
+}
+export async function decideClaim(
+  id: string,
+  status: 'approved' | 'rejected',
+  reason: string,
+) {
+  const response = await fetch(`/api/reviewer/claims/${id}/decision`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ status, reason }),
+  });
+  const body = await response.json();
+  if (!response.ok) throw new Error(body?.error?.message ?? 'Decision failed.');
+}
+export type ManagedBuilding = {
+  id: string;
+  candidateId: string;
+  name: string;
+  floors: number;
+  createdAt: string;
+};
+export async function fetchMyBuildings(): Promise<ManagedBuilding[]> {
+  const response = await fetch('/api/buildings/mine', {
+    cache: 'no-store',
+    credentials: 'same-origin',
+  });
+  if (!response.ok) throw new Error('Buildings unavailable.');
+  return (await response.json()) as ManagedBuilding[];
+}
+export async function createBuilding(input: {
+  candidateId: string;
+  name: string;
+  floors: number;
+}): Promise<ManagedBuilding> {
+  const response = await fetch('/api/buildings', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const body = await response.json();
+  if (!response.ok)
+    throw new Error(body?.error?.message ?? 'Building creation failed.');
+  return body as ManagedBuilding;
 }

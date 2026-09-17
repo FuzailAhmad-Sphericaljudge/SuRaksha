@@ -18,7 +18,11 @@ import {
   fetchCandidates,
   createCandidate,
   createPropertyClaim,
+  createBuilding,
+  decideClaim,
   fetchMyClaims,
+  fetchMyBuildings,
+  fetchReviewerClaims,
   loginDemoAccount,
   logoutDemoAccount,
   registerDemoAccount,
@@ -26,6 +30,7 @@ import {
   searchCandidates,
   type PropertyCandidate,
   type PropertyClaim,
+  type ManagedBuilding,
 } from './api';
 import './styles.css';
 
@@ -82,6 +87,9 @@ function App() {
   const [candidateMessage, setCandidateMessage] = useState('');
   const [claims, setClaims] = useState<PropertyClaim[]>([]);
   const [claimMessage, setClaimMessage] = useState('');
+  const [reviewClaims, setReviewClaims] = useState<PropertyClaim[]>([]);
+  const [buildings, setBuildings] = useState<ManagedBuilding[]>([]);
+  const [buildingMessage, setBuildingMessage] = useState('');
   const [query, setQuery] = useState('');
   const [message, setMessage] = useState(
     'Search is a visual preview. No live properties are indexed.',
@@ -110,10 +118,21 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (session.authenticated && session.profile?.role === 'owner_manager')
+    if (session.authenticated && session.profile?.role === 'owner_manager') {
       void fetchMyClaims()
         .then(setClaims)
         .catch(() => setClaimMessage('Claims could not be loaded.'));
+      void fetchMyBuildings()
+        .then(setBuildings)
+        .catch(() => setBuildingMessage('Buildings could not be loaded.'));
+    }
+    if (
+      session.authenticated &&
+      session.user.email === 'reviewer@suraksha.demo'
+    )
+      void fetchReviewerClaims()
+        .then(setReviewClaims)
+        .catch(() => setClaimMessage('Reviewer queue could not be loaded.'));
   }, [session]);
 
   useEffect(() => {
@@ -276,6 +295,40 @@ function App() {
       form.reset();
     } catch (error) {
       setClaimMessage(error instanceof Error ? error.message : 'Claim failed.');
+    }
+  }
+
+  async function reviewClaim(id: string, status: 'approved' | 'rejected') {
+    const reason = window.prompt(`Reason for ${status}:`);
+    if (!reason) return;
+    try {
+      await decideClaim(id, status, reason);
+      setReviewClaims(await fetchReviewerClaims());
+    } catch (error) {
+      setClaimMessage(
+        error instanceof Error ? error.message : 'Decision failed.',
+      );
+    }
+  }
+
+  async function submitBuilding(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBuildingMessage('');
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    try {
+      await createBuilding({
+        candidateId: String(data.get('candidateId')),
+        name: String(data.get('name')),
+        floors: Number(data.get('floors')),
+      });
+      setBuildings(await fetchMyBuildings());
+      setBuildingMessage('Building saved.');
+      form.reset();
+    } catch (error) {
+      setBuildingMessage(
+        error instanceof Error ? error.message : 'Building failed.',
+      );
     }
   }
 
@@ -471,6 +524,91 @@ function App() {
           </div>
         </section>
       )}
+      {session.authenticated &&
+        session.user.email === 'reviewer@suraksha.demo' && (
+          <section className="claim-panel" aria-labelledby="review-title">
+            <div>
+              <p className="kicker">Demo reviewer</p>
+              <h2 id="review-title">Owner claim queue</h2>
+              <p>A reason is required for every decision.</p>
+            </div>
+            <div className="claim-list">
+              {reviewClaims.length === 0 ? (
+                <p>No pending claims.</p>
+              ) : (
+                reviewClaims.map((claim) => (
+                  <article key={claim.id}>
+                    <span>{claim.status}</span>
+                    <strong>{claim.candidateName}</strong>
+                    <p>{claim.evidenceNote}</p>
+                    <div className="decision-actions">
+                      <button
+                        onClick={() => void reviewClaim(claim.id, 'approved')}
+                      >
+                        Approve
+                      </button>
+                      <button
+                        onClick={() => void reviewClaim(claim.id, 'rejected')}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </article>
+                ))
+              )}
+            </div>
+          </section>
+        )}
+      {session.authenticated &&
+        session.profile?.role === 'owner_manager' &&
+        session.profile.reviewStatus === 'active' && (
+          <section className="claim-panel" aria-labelledby="building-title">
+            <div>
+              <p className="kicker">Property management</p>
+              <h2 id="building-title">Add a building</h2>
+              <p>Only properties with an approved owner claim are accepted.</p>
+            </div>
+            <form onSubmit={submitBuilding}>
+              <select name="candidateId" required defaultValue="">
+                <option value="" disabled>
+                  Select approved property
+                </option>
+                {claims
+                  .filter((claim) => claim.status === 'approved')
+                  .map((claim) => (
+                    <option key={claim.id} value={claim.candidateId}>
+                      {claim.candidateName}
+                    </option>
+                  ))}
+              </select>
+              <input
+                name="name"
+                minLength={2}
+                required
+                placeholder="Building name or block"
+              />
+              <input
+                name="floors"
+                type="number"
+                min={1}
+                max={300}
+                required
+                placeholder="Floors"
+              />
+              <button type="submit">Add building</button>
+              {buildingMessage && <p role="status">{buildingMessage}</p>}
+            </form>
+            <div className="claim-list">
+              {buildings.map((building) => (
+                <article key={building.id}>
+                  <span>Managed building</span>
+                  <strong>{building.name}</strong>
+                  <p>{building.floors} floors</p>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
       <main id="top">
         <section className="hero" aria-labelledby="hero-title">
           <img

@@ -54,6 +54,16 @@ export function openDatabase(path: string) {
     );
     INSERT OR IGNORE INTO schema_migrations(version, applied_at)
       VALUES (5, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    CREATE TABLE IF NOT EXISTS managed_buildings (
+      id TEXT PRIMARY KEY,
+      candidate_id TEXT NOT NULL REFERENCES property_candidates(id) ON DELETE CASCADE,
+      owner_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      floors INTEGER NOT NULL CHECK(floors BETWEEN 1 AND 300),
+      created_at TEXT NOT NULL
+    );
+    INSERT OR IGNORE INTO schema_migrations(version, applied_at)
+      VALUES (6, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
   `);
   const candidateColumns = database
     .prepare('PRAGMA table_info(property_candidates)')
@@ -65,6 +75,13 @@ export function openDatabase(path: string) {
   database.exec(
     "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (4, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
   );
+  const claimColumns = database
+    .prepare('PRAGMA table_info(property_claims)')
+    .all() as Array<{ name: string }>;
+  if (!claimColumns.some((column) => column.name === 'review_reason'))
+    database.exec('ALTER TABLE property_claims ADD COLUMN review_reason TEXT');
+  if (!claimColumns.some((column) => column.name === 'reviewed_at'))
+    database.exec('ALTER TABLE property_claims ADD COLUMN reviewed_at TEXT');
   return database;
 }
 
@@ -154,10 +171,17 @@ export type PropertyClaimRecord = {
   evidenceNote: string;
   status: 'submitted' | 'under_review' | 'approved' | 'rejected' | 'withdrawn';
   createdAt: string;
+  reviewReason: string | null;
+  reviewedAt: string | null;
 };
 export class PropertyClaimRepository {
   constructor(private readonly database: DatabaseSync) {}
-  save(record: Omit<PropertyClaimRecord, 'candidateName'>) {
+  save(
+    record: Omit<
+      PropertyClaimRecord,
+      'candidateName' | 'reviewReason' | 'reviewedAt'
+    >,
+  ) {
     this.database
       .prepare(
         'INSERT INTO property_claims(id, candidate_id, claimant_user_id, evidence_note, status, created_at) VALUES (?, ?, ?, ?, ?, ?)',
@@ -175,10 +199,94 @@ export class PropertyClaimRepository {
     return this.database
       .prepare(
         `SELECT property_claims.id, candidate_id AS candidateId, property_candidates.name AS candidateName,
-      claimant_user_id AS claimantUserId, evidence_note AS evidenceNote, status, property_claims.created_at AS createdAt
+      claimant_user_id AS claimantUserId, evidence_note AS evidenceNote, status, property_claims.created_at AS createdAt, review_reason AS reviewReason, reviewed_at AS reviewedAt
       FROM property_claims JOIN property_candidates ON property_candidates.id = property_claims.candidate_id
       WHERE claimant_user_id = ? ORDER BY property_claims.created_at DESC`,
       )
       .all(userId) as PropertyClaimRecord[];
+  }
+  listPending(): PropertyClaimRecord[] {
+    return this.database
+      .prepare(
+        `SELECT property_claims.id, candidate_id AS candidateId, property_candidates.name AS candidateName,
+      claimant_user_id AS claimantUserId, evidence_note AS evidenceNote, status, property_claims.created_at AS createdAt, review_reason AS reviewReason, reviewed_at AS reviewedAt
+      FROM property_claims JOIN property_candidates ON property_candidates.id = property_claims.candidate_id
+      WHERE status IN ('submitted', 'under_review') ORDER BY property_claims.created_at ASC`,
+      )
+      .all() as PropertyClaimRecord[];
+  }
+  decide(
+    id: string,
+    status: 'approved' | 'rejected',
+    reason: string,
+    reviewedAt: string,
+  ) {
+    const claim = this.database
+      .prepare(
+        'SELECT claimant_user_id AS claimantUserId FROM property_claims WHERE id = ?',
+      )
+      .get(id) as { claimantUserId: string } | undefined;
+    if (!claim) return false;
+    this.database.exec('BEGIN');
+    try {
+      this.database
+        .prepare(
+          'UPDATE property_claims SET status = ?, review_reason = ?, reviewed_at = ? WHERE id = ?',
+        )
+        .run(status, reason, reviewedAt, id);
+      if (status === 'approved')
+        this.database
+          .prepare(
+            "UPDATE account_profiles SET review_status = 'active' WHERE user_id = ? AND role = 'owner_manager'",
+          )
+          .run(claim.claimantUserId);
+      this.database.exec('COMMIT');
+      return true;
+    } catch (error) {
+      this.database.exec('ROLLBACK');
+      throw error;
+    }
+  }
+  hasApproved(userId: string, candidateId: string): boolean {
+    return Boolean(
+      this.database
+        .prepare(
+          "SELECT 1 AS present FROM property_claims WHERE claimant_user_id = ? AND candidate_id = ? AND status = 'approved'",
+        )
+        .get(userId, candidateId),
+    );
+  }
+}
+
+export type ManagedBuildingRecord = {
+  id: string;
+  candidateId: string;
+  ownerUserId: string;
+  name: string;
+  floors: number;
+  createdAt: string;
+};
+export class ManagedBuildingRepository {
+  constructor(private readonly database: DatabaseSync) {}
+  save(record: ManagedBuildingRecord) {
+    this.database
+      .prepare(
+        'INSERT INTO managed_buildings(id, candidate_id, owner_user_id, name, floors, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      )
+      .run(
+        record.id,
+        record.candidateId,
+        record.ownerUserId,
+        record.name,
+        record.floors,
+        record.createdAt,
+      );
+  }
+  listForOwner(userId: string): ManagedBuildingRecord[] {
+    return this.database
+      .prepare(
+        'SELECT id, candidate_id AS candidateId, owner_user_id AS ownerUserId, name, floors, created_at AS createdAt FROM managed_buildings WHERE owner_user_id = ? ORDER BY created_at DESC',
+      )
+      .all(userId) as ManagedBuildingRecord[];
   }
 }

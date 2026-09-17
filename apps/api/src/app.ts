@@ -15,6 +15,7 @@ import { readWorkspaceIdentity } from './workspaceIdentity.js';
 import {
   AccountProfileRepository,
   PropertyClaimRepository,
+  ManagedBuildingRepository,
   PropertyCandidateRepository,
 } from './database.js';
 import {
@@ -62,6 +63,17 @@ export function createApp(options: AppOptions = {}) {
     candidateId: z.uuid(),
     evidenceNote: z.string().trim().min(20).max(1000),
   });
+  const claimDecisionSchema = z.strictObject({
+    status: z.enum(['approved', 'rejected']),
+    reason: z.string().trim().min(10).max(1000),
+  });
+  const buildingSchema = z.strictObject({
+    candidateId: z.uuid(),
+    name: z.string().trim().min(2).max(120),
+    floors: z.number().int().min(1).max(300),
+  });
+  const isDemoReviewer = (email: string) =>
+    mode === 'demo' && email.toLowerCase() === 'reviewer@suraksha.demo';
   const currentUser = (headers: IncomingHttpHeaders) =>
     (database && mode === 'demo'
       ? readDemoUser(
@@ -242,6 +254,132 @@ export function createApp(options: AppOptions = {}) {
         });
       throw error;
     }
+    return reply.code(201).send(record);
+  });
+
+  app.get('/api/reviewer/claims', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user || !isDemoReviewer(user.email))
+      return reply.code(403).send({
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Reviewer access is required.',
+          requestId: request.id,
+        },
+      });
+    return database ? new PropertyClaimRepository(database).listPending() : [];
+  });
+
+  app.post('/api/reviewer/claims/:id/decision', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user || !isDemoReviewer(user.email))
+      return reply.code(403).send({
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Reviewer access is required.',
+          requestId: request.id,
+        },
+      });
+    if (!database)
+      return reply.code(503).send({
+        error: {
+          code: 'DATABASE_UNAVAILABLE',
+          message: 'Review is unavailable.',
+          requestId: request.id,
+        },
+      });
+    const parsed = claimDecisionSchema.safeParse(request.body);
+    const identifier = z
+      .uuid()
+      .safeParse((request.params as { id?: unknown }).id);
+    if (!parsed.success || !identifier.success)
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'A valid decision and reason are required.',
+          requestId: request.id,
+        },
+      });
+    const decided = new PropertyClaimRepository(database).decide(
+      identifier.data,
+      parsed.data.status,
+      parsed.data.reason,
+      now().toISOString(),
+    );
+    return decided
+      ? { status: parsed.data.status }
+      : reply.code(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Claim not found.',
+            requestId: request.id,
+          },
+        });
+  });
+
+  app.get('/api/buildings/mine', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user)
+      return reply.code(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Sign-in is required.',
+          requestId: request.id,
+        },
+      });
+    return database
+      ? new ManagedBuildingRepository(database).listForOwner(user.id)
+      : [];
+  });
+
+  app.post('/api/buildings', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user)
+      return reply.code(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Sign-in is required.',
+          requestId: request.id,
+        },
+      });
+    if (!database)
+      return reply.code(503).send({
+        error: {
+          code: 'DATABASE_UNAVAILABLE',
+          message: 'Building management is unavailable.',
+          requestId: request.id,
+        },
+      });
+    const parsed = buildingSchema.safeParse(request.body);
+    if (!parsed.success)
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message:
+            'Enter a valid approved property, building name and floor count.',
+          requestId: request.id,
+        },
+      });
+    if (
+      !new PropertyClaimRepository(database).hasApproved(
+        user.id,
+        parsed.data.candidateId,
+      )
+    )
+      return reply.code(403).send({
+        error: {
+          code: 'FORBIDDEN',
+          message: 'An approved owner claim is required.',
+          requestId: request.id,
+        },
+      });
+    const record = {
+      id: randomUUID(),
+      ...parsed.data,
+      ownerUserId: user.id,
+      createdAt: now().toISOString(),
+    };
+    new ManagedBuildingRepository(database).save(record);
     return reply.code(201).send(record);
   });
 

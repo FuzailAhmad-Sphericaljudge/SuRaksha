@@ -87,6 +87,8 @@ Owners add buildings, floors, public areas, facilities and contact information. 
 
 Done when approved changes appear on the public profile and private room identifiers remain hidden.
 
+Status: partial — demo reviewers can approve/reject owner claims with a reason, approval activates the owner profile, and approved owners can persist building names and floor counts. Areas, facilities, public profile publication and change review remain pending.
+
 ## Phase 09 — Secure media pipeline
 
 Add authorized uploads, private object storage, checksums, file inspection, image derivatives, video processing, retry/idempotency, moderation and deletion/retention controls.

@@ -244,6 +244,18 @@ select {
 .claim-list p {
   margin: 0.3rem 0 0;
 }
+.decision-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.decision-actions button {
+  padding: 0.55rem 0.85rem;
+  border: 1px solid var(--ink);
+  border-radius: 999px;
+  background: #fff;
+  cursor: pointer;
+}
 @media (max-width: 760px) {
   .role-grid,
   .candidate-list {
