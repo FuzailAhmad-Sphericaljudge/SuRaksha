@@ -114,6 +114,24 @@ select {
   border-radius: 1rem;
   background: #dbe8ed;
 }
+.live-results {
+  padding: clamp(3rem, 7vw, 7rem) clamp(1rem, 5vw, 5rem);
+  display: grid;
+  grid-template-columns: minmax(220px, 0.7fr) 1.3fr;
+  gap: clamp(2rem, 5vw, 6rem);
+  background: #f5f6f3;
+}
+.live-results h2 {
+  margin: 0.4rem 0;
+  font: 500 clamp(2rem, 4vw, 4rem) / 1 'Manrope';
+  letter-spacing: -0.06em;
+}
+.candidate-list small {
+  display: block;
+  margin-top: 0.65rem;
+  color: #647178;
+  text-transform: capitalize;
+}
 .candidate-intake h2 {
   margin: 0.3rem 0;
 }
@@ -176,6 +194,9 @@ select {
   }
   .dashboard-strip {
     flex-direction: column;
+  }
+  .live-results {
+    grid-template-columns: 1fr;
   }
 }
 a {

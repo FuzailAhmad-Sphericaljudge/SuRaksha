@@ -105,6 +105,31 @@ export function createApp(options: AppOptions = {}) {
     return new PropertyCandidateRepository(database).list();
   });
 
+  app.get('/api/candidates/search', async (request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    if (!database) return [];
+    const parsed = z
+      .strictObject({
+        q: z.string().trim().max(120).default(''),
+        type: z
+          .enum(['paying_guest', 'hostel', 'coaching_institute'])
+          .optional(),
+      })
+      .safeParse(request.query);
+    if (!parsed.success)
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Search query is invalid.',
+          requestId: request.id,
+        },
+      });
+    return new PropertyCandidateRepository(database).search(
+      parsed.data.q,
+      parsed.data.type,
+    );
+  });
+
   app.post('/api/candidates', async (request, reply) => {
     const user = currentUser(request.headers);
     if (!user)

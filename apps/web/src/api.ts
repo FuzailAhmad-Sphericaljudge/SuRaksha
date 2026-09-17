@@ -125,3 +125,16 @@ export async function createCandidate(
     throw new Error(body?.error?.message ?? 'Submission failed.');
   return body as PropertyCandidate;
 }
+
+export async function searchCandidates(
+  query: string,
+  propertyType?: PropertyCandidate['propertyType'],
+): Promise<PropertyCandidate[]> {
+  const parameters = new URLSearchParams({ q: query });
+  if (propertyType) parameters.set('type', propertyType);
+  const response = await fetch(`/api/candidates/search?${parameters}`, {
+    cache: 'no-store',
+  });
+  if (!response.ok) throw new Error('Search failed.');
+  return (await response.json()) as PropertyCandidate[];
+}

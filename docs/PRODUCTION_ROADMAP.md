@@ -71,6 +71,8 @@ Connect search, filters, pagination and map bounds to the database. Show source,
 
 Done when newly approved candidates appear in search after refresh and unknown fields stay unknown.
 
+Status: partial — server-side name/locality/type search reads persistent candidate records and the public UI labels every result unverified. Maps, coordinates, pagination and reviewer-approved listings remain pending.
+
 ## Phase 07 — Owner claim workflow
 
 Build property claim forms, private document references, reviewer queue, approve/reject decisions and audit history.

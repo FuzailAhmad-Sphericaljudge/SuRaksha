@@ -150,6 +150,12 @@ describe('API foundation', () => {
     });
     expect((await app.inject('/api/candidates')).json()).toHaveLength(1);
     expect(
+      (await app.inject('/api/candidates/search?q=kota&type=hostel')).json(),
+    ).toHaveLength(1);
+    expect((await app.inject('/api/candidates/search?q=delhi')).json()).toEqual(
+      [],
+    );
+    expect(
       (
         await app.inject({
           method: 'POST',

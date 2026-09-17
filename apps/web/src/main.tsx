@@ -21,6 +21,7 @@ import {
   logoutDemoAccount,
   registerDemoAccount,
   saveOnboarding,
+  searchCandidates,
   type PropertyCandidate,
 } from './api';
 import './styles.css';
@@ -136,9 +137,25 @@ function App() {
     };
   }, []);
 
-  function search(event: FormEvent) {
+  async function search(event: FormEvent) {
     event.preventDefault();
     const value = query.trim();
+    try {
+      const results = await searchCandidates(
+        value,
+        filter === 'all' ? undefined : filter,
+      );
+      setCandidates(results);
+      setMessage(
+        `${results.length} submitted candidate${results.length === 1 ? '' : 's'} found. Candidate does not mean verified.`,
+      );
+      document
+        .querySelector('#candidate-results')
+        ?.scrollIntoView({ behavior: 'smooth' });
+    } catch {
+      setMessage('Search is temporarily unavailable.');
+    }
+    return;
     setMessage(
       value
         ? `Showing fictional examples matching “${value}”.`
@@ -415,6 +432,35 @@ function App() {
               </div>
               <p aria-live="polite">{message}</p>
             </form>
+          </div>
+        </section>
+
+        <section
+          className="live-results"
+          id="candidate-results"
+          aria-labelledby="candidate-results-title"
+        >
+          <div>
+            <p className="index">Live candidate database</p>
+            <h2 id="candidate-results-title">Submitted spaces</h2>
+            <p>
+              These records come from the local database and remain unverified
+              until review.
+            </p>
+          </div>
+          <div className="candidate-list">
+            {candidates.length === 0 ? (
+              <p>No matching submitted candidates.</p>
+            ) : (
+              candidates.map((candidate) => (
+                <article key={candidate.id}>
+                  <span>Candidate · Unverified</span>
+                  <strong>{candidate.name}</strong>
+                  <p>{candidate.locality}</p>
+                  <small>{candidate.propertyType.replaceAll('_', ' ')}</small>
+                </article>
+              ))
+            )}
           </div>
         </section>
 

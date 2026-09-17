@@ -113,4 +113,24 @@ export class PropertyCandidateRepository {
       )
       .all() as PropertyCandidateRecord[];
   }
+  search(
+    query: string,
+    propertyType?: PropertyCandidateRecord['propertyType'],
+  ): PropertyCandidateRecord[] {
+    const normalized = query.trim().toLowerCase();
+    return this.database
+      .prepare(
+        `SELECT id, name, locality, property_type AS propertyType, source, created_at AS createdAt
+        FROM property_candidates
+        WHERE (? = '' OR instr(lower(name || ' ' || locality), ?) > 0)
+          AND (? IS NULL OR property_type = ?)
+        ORDER BY created_at DESC, id ASC LIMIT 50`,
+      )
+      .all(
+        normalized,
+        normalized,
+        propertyType ?? null,
+        propertyType ?? null,
+      ) as PropertyCandidateRecord[];
+  }
 }
