@@ -14,6 +14,7 @@ import {
 import { readWorkspaceIdentity } from './workspaceIdentity.js';
 import {
   AccountProfileRepository,
+  PropertyClaimRepository,
   PropertyCandidateRepository,
 } from './database.js';
 import {
@@ -56,6 +57,10 @@ export function createApp(options: AppOptions = {}) {
     name: z.string().trim().min(3).max(160),
     locality: z.string().trim().min(3).max(120),
     propertyType: z.enum(['paying_guest', 'hostel', 'coaching_institute']),
+  });
+  const claimSchema = z.strictObject({
+    candidateId: z.uuid(),
+    evidenceNote: z.string().trim().min(20).max(1000),
   });
   const currentUser = (headers: IncomingHttpHeaders) =>
     (database && mode === 'demo'
@@ -164,6 +169,79 @@ export function createApp(options: AppOptions = {}) {
       createdAt: now().toISOString(),
     };
     new PropertyCandidateRepository(database).save(record);
+    return reply.code(201).send(record);
+  });
+
+  app.get('/api/claims/mine', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user)
+      return reply.code(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Sign-in is required.',
+          requestId: request.id,
+        },
+      });
+    if (!database) return [];
+    return new PropertyClaimRepository(database).listForUser(user.id);
+  });
+
+  app.post('/api/claims', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user)
+      return reply.code(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Sign-in is required.',
+          requestId: request.id,
+        },
+      });
+    if (!database)
+      return reply.code(503).send({
+        error: {
+          code: 'DATABASE_UNAVAILABLE',
+          message: 'Claims are unavailable.',
+          requestId: request.id,
+        },
+      });
+    const profile = new AccountProfileRepository(database).get(user.id);
+    if (profile?.role !== 'owner_manager')
+      return reply.code(403).send({
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Only owner or manager accounts can submit claims.',
+          requestId: request.id,
+        },
+      });
+    const parsed = claimSchema.safeParse(request.body);
+    if (!parsed.success)
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Select a property and explain your management connection.',
+          requestId: request.id,
+        },
+      });
+    const record = {
+      id: randomUUID(),
+      ...parsed.data,
+      claimantUserId: user.id,
+      status: 'submitted' as const,
+      createdAt: now().toISOString(),
+    };
+    try {
+      new PropertyClaimRepository(database).save(record);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('UNIQUE'))
+        return reply.code(409).send({
+          error: {
+            code: 'CONFLICT',
+            message: 'You already claimed this property.',
+            requestId: request.id,
+          },
+        });
+      throw error;
+    }
     return reply.code(201).send(record);
   });
 

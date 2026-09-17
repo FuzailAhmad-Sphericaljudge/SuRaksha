@@ -79,6 +79,8 @@ Build property claim forms, private document references, reviewer queue, approve
 
 Done when only an approved manager can edit the claimed property.
 
+Status: partial — owner/manager accounts can submit one persisted claim per property and see its pending state after refresh. Private document upload, reviewer queue/decision and approved editing permissions remain pending.
+
 ## Phase 08 — Property and building management
 
 Owners add buildings, floors, public areas, facilities and contact information. Reviewers can compare changes and reject misleading edits.

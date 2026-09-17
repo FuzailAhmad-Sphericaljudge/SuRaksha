@@ -193,6 +193,49 @@ describe('API foundation', () => {
       role: 'owner_manager',
       reviewStatus: 'pending_review',
     });
+    const candidate = await app.inject({
+      method: 'POST',
+      url: '/api/candidates',
+      headers: { cookie: registration.headers['set-cookie'] },
+      payload: {
+        name: 'Owner Test PG',
+        locality: 'Kota, Rajasthan',
+        propertyType: 'paying_guest',
+      },
+    });
+    const claimPayload = {
+      candidateId: candidate.json().id,
+      evidenceNote:
+        'I manage this property and can provide the registered lease document.',
+    };
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/claims',
+          headers: { cookie: registration.headers['set-cookie'] },
+          payload: claimPayload,
+        })
+      ).statusCode,
+    ).toBe(201);
+    expect(
+      (
+        await app.inject({
+          url: '/api/claims/mine',
+          headers: { cookie: registration.headers['set-cookie'] },
+        })
+      ).json()[0],
+    ).toMatchObject({ candidateName: 'Owner Test PG', status: 'submitted' });
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/claims',
+          headers: { cookie: registration.headers['set-cookie'] },
+          payload: claimPayload,
+        })
+      ).statusCode,
+    ).toBe(409);
     database.close();
   });
 

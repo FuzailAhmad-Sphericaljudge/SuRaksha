@@ -184,12 +184,75 @@ select {
 .candidate-list article p {
   margin: 0.25rem 0 0;
 }
+.claim-panel {
+  margin: 1rem clamp(1rem, 3vw, 3rem);
+  padding: clamp(1.25rem, 3vw, 2.5rem);
+  border: 1px solid #d7cdbd;
+  border-radius: 1rem;
+  background: #f3eee5;
+}
+.claim-panel h2 {
+  margin: 0.3rem 0;
+}
+.claim-panel form {
+  display: grid;
+  grid-template-columns: 1fr 2fr auto;
+  gap: 0.7rem;
+  margin: 1.25rem 0;
+}
+.claim-panel select,
+.claim-panel textarea,
+.claim-panel button {
+  padding: 0.8rem;
+  border: 1px solid #c9bda9;
+  border-radius: 0.65rem;
+  background: #fff;
+}
+.claim-panel textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+.claim-panel button {
+  color: #fff;
+  background: var(--ink);
+  cursor: pointer;
+}
+.claim-panel form p {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.claim-list {
+  display: grid;
+  gap: 0.6rem;
+}
+.claim-list article {
+  padding: 0.9rem;
+  border-left: 3px solid #b16831;
+  background: #fff;
+}
+.claim-list span {
+  display: block;
+  color: #9b5222;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.claim-list strong {
+  display: block;
+  margin-top: 0.25rem;
+}
+.claim-list p {
+  margin: 0.3rem 0 0;
+}
 @media (max-width: 760px) {
   .role-grid,
   .candidate-list {
     grid-template-columns: 1fr 1fr;
   }
   .candidate-intake form {
+    grid-template-columns: 1fr;
+  }
+  .claim-panel form {
     grid-template-columns: 1fr;
   }
   .dashboard-strip {

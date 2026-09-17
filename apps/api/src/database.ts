@@ -43,6 +43,17 @@ export function openDatabase(path: string) {
     );
     INSERT OR IGNORE INTO schema_migrations(version, applied_at)
       VALUES (3, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    CREATE TABLE IF NOT EXISTS property_claims (
+      id TEXT PRIMARY KEY,
+      candidate_id TEXT NOT NULL REFERENCES property_candidates(id) ON DELETE CASCADE,
+      claimant_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      evidence_note TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('submitted', 'under_review', 'approved', 'rejected', 'withdrawn')),
+      created_at TEXT NOT NULL,
+      UNIQUE(candidate_id, claimant_user_id)
+    );
+    INSERT OR IGNORE INTO schema_migrations(version, applied_at)
+      VALUES (5, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
   `);
   const candidateColumns = database
     .prepare('PRAGMA table_info(property_candidates)')
@@ -132,5 +143,42 @@ export class PropertyCandidateRepository {
         propertyType ?? null,
         propertyType ?? null,
       ) as PropertyCandidateRecord[];
+  }
+}
+
+export type PropertyClaimRecord = {
+  id: string;
+  candidateId: string;
+  candidateName: string;
+  claimantUserId: string;
+  evidenceNote: string;
+  status: 'submitted' | 'under_review' | 'approved' | 'rejected' | 'withdrawn';
+  createdAt: string;
+};
+export class PropertyClaimRepository {
+  constructor(private readonly database: DatabaseSync) {}
+  save(record: Omit<PropertyClaimRecord, 'candidateName'>) {
+    this.database
+      .prepare(
+        'INSERT INTO property_claims(id, candidate_id, claimant_user_id, evidence_note, status, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      )
+      .run(
+        record.id,
+        record.candidateId,
+        record.claimantUserId,
+        record.evidenceNote,
+        record.status,
+        record.createdAt,
+      );
+  }
+  listForUser(userId: string): PropertyClaimRecord[] {
+    return this.database
+      .prepare(
+        `SELECT property_claims.id, candidate_id AS candidateId, property_candidates.name AS candidateName,
+      claimant_user_id AS claimantUserId, evidence_note AS evidenceNote, status, property_claims.created_at AS createdAt
+      FROM property_claims JOIN property_candidates ON property_candidates.id = property_claims.candidate_id
+      WHERE claimant_user_id = ? ORDER BY property_claims.created_at DESC`,
+      )
+      .all(userId) as PropertyClaimRecord[];
   }
 }

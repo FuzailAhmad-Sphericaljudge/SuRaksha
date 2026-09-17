@@ -138,3 +138,37 @@ export async function searchCandidates(
   if (!response.ok) throw new Error('Search failed.');
   return (await response.json()) as PropertyCandidate[];
 }
+
+export type PropertyClaim = {
+  id: string;
+  candidateId: string;
+  candidateName?: string;
+  evidenceNote: string;
+  status: 'submitted' | 'under_review' | 'approved' | 'rejected' | 'withdrawn';
+  createdAt: string;
+};
+
+export async function fetchMyClaims(): Promise<PropertyClaim[]> {
+  const response = await fetch('/api/claims/mine', {
+    cache: 'no-store',
+    credentials: 'same-origin',
+  });
+  if (!response.ok) throw new Error('Claims unavailable.');
+  return (await response.json()) as PropertyClaim[];
+}
+
+export async function createPropertyClaim(input: {
+  candidateId: string;
+  evidenceNote: string;
+}): Promise<PropertyClaim> {
+  const response = await fetch('/api/claims', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const body = await response.json();
+  if (!response.ok)
+    throw new Error(body?.error?.message ?? 'Claim submission failed.');
+  return body as PropertyClaim;
+}

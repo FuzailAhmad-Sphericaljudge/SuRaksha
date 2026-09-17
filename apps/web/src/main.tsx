@@ -17,12 +17,15 @@ import {
   fetchSession,
   fetchCandidates,
   createCandidate,
+  createPropertyClaim,
+  fetchMyClaims,
   loginDemoAccount,
   logoutDemoAccount,
   registerDemoAccount,
   saveOnboarding,
   searchCandidates,
   type PropertyCandidate,
+  type PropertyClaim,
 } from './api';
 import './styles.css';
 
@@ -77,6 +80,8 @@ function App() {
   const [authError, setAuthError] = useState('');
   const [candidates, setCandidates] = useState<PropertyCandidate[]>([]);
   const [candidateMessage, setCandidateMessage] = useState('');
+  const [claims, setClaims] = useState<PropertyClaim[]>([]);
+  const [claimMessage, setClaimMessage] = useState('');
   const [query, setQuery] = useState('');
   const [message, setMessage] = useState(
     'Search is a visual preview. No live properties are indexed.',
@@ -103,6 +108,13 @@ function App() {
       .catch(() => setConnection('unavailable'));
     return () => controller.abort();
   }, []);
+
+  useEffect(() => {
+    if (session.authenticated && session.profile?.role === 'owner_manager')
+      void fetchMyClaims()
+        .then(setClaims)
+        .catch(() => setClaimMessage('Claims could not be loaded.'));
+  }, [session]);
 
   useEffect(() => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
@@ -246,6 +258,24 @@ function App() {
       setCandidateMessage(
         error instanceof Error ? error.message : 'Submission failed.',
       );
+    }
+  }
+
+  async function submitClaim(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setClaimMessage('');
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    try {
+      await createPropertyClaim({
+        candidateId: String(data.get('candidateId')),
+        evidenceNote: String(data.get('evidenceNote')),
+      });
+      setClaims(await fetchMyClaims());
+      setClaimMessage('Claim submitted for reviewer verification.');
+      form.reset();
+    } catch (error) {
+      setClaimMessage(error instanceof Error ? error.message : 'Claim failed.');
     }
   }
 
@@ -396,6 +426,48 @@ function App() {
                 </article>
               ))
             )}
+          </div>
+        </section>
+      )}
+      {session.authenticated && session.profile?.role === 'owner_manager' && (
+        <section className="claim-panel" aria-labelledby="claim-title">
+          <div>
+            <p className="kicker">Owner verification</p>
+            <h2 id="claim-title">Claim a submitted property</h2>
+            <p>
+              Your claim stays pending until a reviewer checks management
+              evidence.
+            </p>
+          </div>
+          <form onSubmit={submitClaim}>
+            <select name="candidateId" required defaultValue="">
+              <option value="" disabled>
+                Select property candidate
+              </option>
+              {candidates.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {candidate.name} — {candidate.locality}
+                </option>
+              ))}
+            </select>
+            <textarea
+              name="evidenceNote"
+              minLength={20}
+              maxLength={1000}
+              required
+              placeholder="Explain your management connection and which documents you can provide."
+            />
+            <button type="submit">Submit owner claim</button>
+            {claimMessage && <p role="status">{claimMessage}</p>}
+          </form>
+          <div className="claim-list">
+            {claims.map((claim) => (
+              <article key={claim.id}>
+                <span>{claim.status.replaceAll('_', ' ')}</span>
+                <strong>{claim.candidateName ?? claim.candidateId}</strong>
+                <p>{claim.evidenceNote}</p>
+              </article>
+            ))}
           </div>
         </section>
       )}
