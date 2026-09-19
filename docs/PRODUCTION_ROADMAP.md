@@ -111,6 +111,8 @@ Build reviewer queues for media and reports, abuse controls, corroboration links
 
 Done when moderation decisions are audited and report volume alone cannot produce verification.
 
+Status: partial — demo reviewers can approve/reject pending evidence with reasons and merge/unmerge same-property duplicate reports without deleting source records. Abuse reports, owner disputes and a full audit-event table remain pending.
+
 ## Phase 12 — Evidence-based public profiles
 
 Generate building profiles from moderated reports and inspections. Show category findings, open issues, history, freshness, limitations and public media.

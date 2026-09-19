@@ -316,3 +316,55 @@ export async function createIssueReport(input: {
     throw new Error(body?.error?.message ?? 'Report submission failed.');
   return body as IssueReport;
 }
+
+export async function fetchReviewerEvidence(): Promise<EvidenceUpload[]> {
+  const response = await fetch('/api/reviewer/evidence', {
+    cache: 'no-store',
+    credentials: 'same-origin',
+  });
+  if (!response.ok) throw new Error('Moderation queue unavailable.');
+  return (await response.json()) as EvidenceUpload[];
+}
+export async function decideEvidence(
+  id: string,
+  status: 'approved' | 'rejected',
+  reason: string,
+) {
+  const response = await fetch(`/api/reviewer/evidence/${id}/decision`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ status, reason }),
+  });
+  if (!response.ok) throw new Error('Moderation decision failed.');
+}
+export async function fetchReviewerReports(): Promise<IssueReport[]> {
+  const response = await fetch('/api/reviewer/reports', {
+    cache: 'no-store',
+    credentials: 'same-origin',
+  });
+  if (!response.ok) throw new Error('Report queue unavailable.');
+  return (await response.json()) as IssueReport[];
+}
+export async function mergeReport(
+  sourceId: string,
+  targetReportId: string,
+  reason: string,
+) {
+  const response = await fetch(`/api/reviewer/reports/${sourceId}/merge`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ targetReportId, reason }),
+  });
+  if (!response.ok) throw new Error('Report merge failed.');
+}
+export async function unmergeReport(sourceId: string, reason: string) {
+  const response = await fetch(`/api/reviewer/reports/${sourceId}/unmerge`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ reason }),
+  });
+  if (!response.ok) throw new Error('Report unmerge failed.');
+}

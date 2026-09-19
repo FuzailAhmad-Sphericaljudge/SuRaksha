@@ -159,6 +159,10 @@ export function createApp(options: AppOptions = {}) {
     genReqId: () => randomUUID(),
     bodyLimit: 1_048_576,
   });
+  const mergeSchema = z.strictObject({
+    targetReportId: z.uuid(),
+    reason: z.string().trim().min(10).max(1000),
+  });
   app.register(fastifyMultipart, {
     limits: { files: 1, fileSize: 50_000_000, fields: 4 },
   });
@@ -650,6 +654,157 @@ export function createApp(options: AppOptions = {}) {
       });
     }
     return reply.code(201).send(record);
+  });
+
+  app.get('/api/reviewer/evidence', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user || !isDemoReviewer(user.email))
+      return reply.code(403).send({
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Reviewer access is required.',
+          requestId: request.id,
+        },
+      });
+    return database
+      ? new EvidenceUploadRepository(database)
+          .listPending()
+          .map(({ storageKey: _storageKey, ...record }) => record)
+      : [];
+  });
+
+  app.post('/api/reviewer/evidence/:id/decision', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user || !isDemoReviewer(user.email))
+      return reply.code(403).send({
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Reviewer access is required.',
+          requestId: request.id,
+        },
+      });
+    if (!database)
+      return reply.code(503).send({
+        error: {
+          code: 'DATABASE_UNAVAILABLE',
+          message: 'Moderation is unavailable.',
+          requestId: request.id,
+        },
+      });
+    const identifier = z
+      .uuid()
+      .safeParse((request.params as { id?: unknown }).id);
+    const decision = claimDecisionSchema.safeParse(request.body);
+    if (!identifier.success || !decision.success)
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'A valid decision and reason are required.',
+          requestId: request.id,
+        },
+      });
+    return new EvidenceUploadRepository(database).decide(
+      identifier.data,
+      decision.data.status,
+      decision.data.reason,
+    )
+      ? { status: decision.data.status }
+      : reply.code(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Pending evidence not found.',
+            requestId: request.id,
+          },
+        });
+  });
+
+  app.get('/api/reviewer/reports', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user || !isDemoReviewer(user.email))
+      return reply.code(403).send({
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Reviewer access is required.',
+          requestId: request.id,
+        },
+      });
+    return database ? new IssueReportRepository(database).listForReview() : [];
+  });
+
+  app.post('/api/reviewer/reports/:id/merge', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user || !isDemoReviewer(user.email))
+      return reply.code(403).send({
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Reviewer access is required.',
+          requestId: request.id,
+        },
+      });
+    const identifier = z
+      .uuid()
+      .safeParse((request.params as { id?: unknown }).id);
+    const parsed = mergeSchema.safeParse(request.body);
+    if (!database || !identifier.success || !parsed.success)
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Select a compatible target report and provide a reason.',
+          requestId: request.id,
+        },
+      });
+    return new IssueReportRepository(database).merge(
+      identifier.data,
+      parsed.data.targetReportId,
+      parsed.data.reason,
+    )
+      ? { status: 'merged' }
+      : reply.code(409).send({
+          error: {
+            code: 'CONFLICT',
+            message:
+              'Reports must be distinct, unmerged and on the same property.',
+            requestId: request.id,
+          },
+        });
+  });
+
+  app.post('/api/reviewer/reports/:id/unmerge', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user || !isDemoReviewer(user.email))
+      return reply.code(403).send({
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Reviewer access is required.',
+          requestId: request.id,
+        },
+      });
+    const identifier = z
+      .uuid()
+      .safeParse((request.params as { id?: unknown }).id);
+    const reason = z
+      .strictObject({ reason: z.string().trim().min(10).max(1000) })
+      .safeParse(request.body);
+    if (!database || !identifier.success || !reason.success)
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'A valid report and reason are required.',
+          requestId: request.id,
+        },
+      });
+    return new IssueReportRepository(database).unmerge(
+      identifier.data,
+      reason.data.reason,
+    )
+      ? { status: 'submitted' }
+      : reply.code(409).send({
+          error: {
+            code: 'CONFLICT',
+            message: 'Report is not merged.',
+            requestId: request.id,
+          },
+        });
   });
 
   app.post('/api/buildings', async (request, reply) => {

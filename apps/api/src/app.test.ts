@@ -213,6 +213,76 @@ describe('API foundation', () => {
       status: 'submitted',
       evidenceIds: [upload.json().id],
     });
+    const duplicate = await app.inject({
+      method: 'POST',
+      url: '/api/reports',
+      headers: { cookie },
+      payload: {
+        candidateId: candidate.json().id,
+        buildingId: null,
+        category: 'fire_safety',
+        title: 'Fire exit obstruction',
+        description:
+          'Furniture blocks the same marked fire exit near the entrance.',
+        visibility: 'private_review',
+        evidenceIds: [],
+      },
+    });
+    const reviewer = await app.inject({
+      method: 'POST',
+      url: '/api/auth/register',
+      payload: {
+        displayName: 'Media Reviewer',
+        email: 'reviewer@suraksha.demo',
+        password: 'review-password',
+      },
+    });
+    const reviewerCookie = reviewer.headers['set-cookie'];
+    expect(
+      (
+        await app.inject({
+          url: '/api/reviewer/evidence',
+          headers: { cookie: reviewerCookie },
+        })
+      ).json(),
+    ).toHaveLength(1);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: `/api/reviewer/evidence/${upload.json().id}/decision`,
+          headers: { cookie: reviewerCookie },
+          payload: {
+            status: 'approved',
+            reason:
+              'Image content is relevant and contains no visible personal data.',
+          },
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: `/api/reviewer/reports/${duplicate.json().id}/merge`,
+          headers: { cookie: reviewerCookie },
+          payload: {
+            targetReportId: report.json().id,
+            reason: 'Same property, category and obstruction location.',
+          },
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: `/api/reviewer/reports/${duplicate.json().id}/unmerge`,
+          headers: { cookie: reviewerCookie },
+          payload: { reason: 'Reporter supplied distinct timing information.' },
+        })
+      ).statusCode,
+    ).toBe(200);
     expect((await app.inject('/api/candidates')).json()).toHaveLength(1);
     expect(
       (await app.inject('/api/candidates/search?q=kota&type=hostel')).json(),

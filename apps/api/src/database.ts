@@ -103,6 +103,25 @@ export function openDatabase(path: string) {
     database.exec('ALTER TABLE property_claims ADD COLUMN review_reason TEXT');
   if (!claimColumns.some((column) => column.name === 'reviewed_at'))
     database.exec('ALTER TABLE property_claims ADD COLUMN reviewed_at TEXT');
+  const evidenceColumns = database
+    .prepare('PRAGMA table_info(evidence_uploads)')
+    .all() as Array<{ name: string }>;
+  if (!evidenceColumns.some((column) => column.name === 'moderation_reason'))
+    database.exec(
+      'ALTER TABLE evidence_uploads ADD COLUMN moderation_reason TEXT',
+    );
+  const reportColumns = database
+    .prepare('PRAGMA table_info(issue_reports)')
+    .all() as Array<{ name: string }>;
+  if (!reportColumns.some((column) => column.name === 'merged_into_report_id'))
+    database.exec(
+      'ALTER TABLE issue_reports ADD COLUMN merged_into_report_id TEXT REFERENCES issue_reports(id)',
+    );
+  if (!reportColumns.some((column) => column.name === 'review_reason'))
+    database.exec('ALTER TABLE issue_reports ADD COLUMN review_reason TEXT');
+  database.exec(
+    "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (9, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+  );
   return database;
 }
 
@@ -338,6 +357,7 @@ export type EvidenceUploadRecord = {
   storageKey: string;
   moderationStatus: 'pending' | 'approved' | 'rejected';
   createdAt: string;
+  moderationReason?: string | null;
 };
 export class EvidenceUploadRepository {
   constructor(private readonly database: DatabaseSync) {}
@@ -364,6 +384,22 @@ export class EvidenceUploadRepository {
         'SELECT id, user_id AS userId, original_name AS originalName, media_type AS mediaType, byte_size AS byteSize, sha256, storage_key AS storageKey, moderation_status AS moderationStatus, created_at AS createdAt FROM evidence_uploads WHERE user_id = ? ORDER BY created_at DESC',
       )
       .all(userId) as EvidenceUploadRecord[];
+  }
+  listPending(): EvidenceUploadRecord[] {
+    return this.database
+      .prepare(
+        "SELECT id, user_id AS userId, original_name AS originalName, media_type AS mediaType, byte_size AS byteSize, sha256, storage_key AS storageKey, moderation_status AS moderationStatus, created_at AS createdAt, moderation_reason AS moderationReason FROM evidence_uploads WHERE moderation_status = 'pending' ORDER BY created_at ASC",
+      )
+      .all() as EvidenceUploadRecord[];
+  }
+  decide(id: string, status: 'approved' | 'rejected', reason: string): boolean {
+    return (
+      this.database
+        .prepare(
+          "UPDATE evidence_uploads SET moderation_status = ?, moderation_reason = ? WHERE id = ? AND moderation_status = 'pending'",
+        )
+        .run(status, reason, id).changes === 1
+    );
   }
   getForUser(id: string, userId: string): EvidenceUploadRecord | null {
     return (
@@ -401,6 +437,8 @@ export type IssueReportRecord = {
   status: 'submitted';
   createdAt: string;
   evidenceIds: string[];
+  mergedIntoReportId?: string | null;
+  reviewReason?: string | null;
 };
 export class IssueReportRepository {
   constructor(private readonly database: DatabaseSync) {}
@@ -454,5 +492,56 @@ export class IssueReportRepository {
         (item) => item.evidenceId,
       ),
     }));
+  }
+  listForReview(): IssueReportRecord[] {
+    const rows = this.database
+      .prepare(
+        `SELECT issue_reports.id, issue_reports.candidate_id AS candidateId, property_candidates.name AS candidateName,
+      issue_reports.building_id AS buildingId, managed_buildings.name AS buildingName, reporter_user_id AS reporterUserId, category, title,
+      description, visibility, status, issue_reports.created_at AS createdAt, merged_into_report_id AS mergedIntoReportId, review_reason AS reviewReason
+      FROM issue_reports JOIN property_candidates ON property_candidates.id = issue_reports.candidate_id
+      LEFT JOIN managed_buildings ON managed_buildings.id = issue_reports.building_id ORDER BY issue_reports.created_at ASC`,
+      )
+      .all() as Array<Omit<IssueReportRecord, 'evidenceIds'>>;
+    const evidence = this.database.prepare(
+      'SELECT evidence_id AS evidenceId FROM report_evidence WHERE report_id = ?',
+    );
+    return rows.map((row) => ({
+      ...row,
+      evidenceIds: (evidence.all(row.id) as Array<{ evidenceId: string }>).map(
+        (item) => item.evidenceId,
+      ),
+    }));
+  }
+  merge(sourceId: string, targetId: string, reason: string): boolean {
+    if (sourceId === targetId) return false;
+    const target = this.database
+      .prepare(
+        'SELECT candidate_id AS candidateId FROM issue_reports WHERE id = ?',
+      )
+      .get(targetId) as { candidateId: string } | undefined;
+    const source = this.database
+      .prepare(
+        'SELECT candidate_id AS candidateId FROM issue_reports WHERE id = ?',
+      )
+      .get(sourceId) as { candidateId: string } | undefined;
+    if (!target || !source || target.candidateId !== source.candidateId)
+      return false;
+    return (
+      this.database
+        .prepare(
+          "UPDATE issue_reports SET status = 'merged', merged_into_report_id = ?, review_reason = ? WHERE id = ? AND merged_into_report_id IS NULL",
+        )
+        .run(targetId, reason, sourceId).changes === 1
+    );
+  }
+  unmerge(sourceId: string, reason: string): boolean {
+    return (
+      this.database
+        .prepare(
+          "UPDATE issue_reports SET status = 'submitted', merged_into_report_id = NULL, review_reason = ? WHERE id = ? AND merged_into_report_id IS NOT NULL",
+        )
+        .run(reason, sourceId).changes === 1
+    );
   }
 }

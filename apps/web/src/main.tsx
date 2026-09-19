@@ -26,8 +26,13 @@ import {
   fetchMyClaims,
   fetchMyBuildings,
   fetchReviewerClaims,
+  fetchReviewerEvidence,
+  fetchReviewerReports,
   uploadEvidence,
   createIssueReport,
+  decideEvidence,
+  mergeReport,
+  unmergeReport,
   loginDemoAccount,
   logoutDemoAccount,
   registerDemoAccount,
@@ -103,6 +108,8 @@ function App() {
   const [reportBuildings, setReportBuildings] = useState<PublicBuilding[]>([]);
   const [reports, setReports] = useState<IssueReport[]>([]);
   const [reportMessage, setReportMessage] = useState('');
+  const [reviewEvidence, setReviewEvidence] = useState<EvidenceUpload[]>([]);
+  const [reviewReports, setReviewReports] = useState<IssueReport[]>([]);
   const [query, setQuery] = useState('');
   const [message, setMessage] = useState(
     'Search is a visual preview. No live properties are indexed.',
@@ -113,14 +120,6 @@ function App() {
   const [selectedId, setSelectedId] = useState(demoProperty.id);
 
   useEffect(() => {
-    if (session.authenticated)
-      void fetchMyEvidence()
-        .then(setEvidence)
-        .catch(() => setUploadMessage('Evidence could not be loaded.'));
-    if (session.authenticated)
-      void fetchMyReports()
-        .then(setReports)
-        .catch(() => setReportMessage('Reports could not be loaded.'));
     const controller = new AbortController();
     void Promise.all([
       fetchHealth(controller.signal),
@@ -139,6 +138,14 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (session.authenticated) {
+      void fetchMyEvidence()
+        .then(setEvidence)
+        .catch(() => setUploadMessage('Evidence could not be loaded.'));
+      void fetchMyReports()
+        .then(setReports)
+        .catch(() => setReportMessage('Reports could not be loaded.'));
+    }
     if (session.authenticated && session.profile?.role === 'owner_manager') {
       void fetchMyClaims()
         .then(setClaims)
@@ -150,10 +157,13 @@ function App() {
     if (
       session.authenticated &&
       session.user.email === 'reviewer@suraksha.demo'
-    )
+    ) {
       void fetchReviewerClaims()
         .then(setReviewClaims)
         .catch(() => setClaimMessage('Reviewer queue could not be loaded.'));
+      void fetchReviewerEvidence().then(setReviewEvidence);
+      void fetchReviewerReports().then(setReviewReports);
+    }
   }, [session]);
 
   useEffect(() => {
@@ -404,6 +414,35 @@ function App() {
     }
   }
 
+  async function moderateEvidence(id: string, status: 'approved' | 'rejected') {
+    const reason = window.prompt(`Reason for ${status}:`);
+    if (!reason) return;
+    await decideEvidence(id, status, reason);
+    setReviewEvidence(await fetchReviewerEvidence());
+  }
+
+  async function mergeDuplicate(sourceId: string) {
+    const targetReportId = window.prompt('Target report ID:');
+    if (!targetReportId) return;
+    const reason = window.prompt('Merge reason:');
+    if (!reason) return;
+    try {
+      await mergeReport(sourceId, targetReportId, reason);
+      setReviewReports(await fetchReviewerReports());
+    } catch (error) {
+      setReportMessage(
+        error instanceof Error ? error.message : 'Merge failed.',
+      );
+    }
+  }
+
+  async function undoMerge(sourceId: string) {
+    const reason = window.prompt('Unmerge reason:');
+    if (!reason) return;
+    await unmergeReport(sourceId, reason);
+    setReviewReports(await fetchReviewerReports());
+  }
+
   return (
     <div className="shell">
       {mode === 'demo' && (
@@ -629,6 +668,95 @@ function App() {
                 ))
               )}
             </div>
+          </section>
+        )}
+      {session.authenticated &&
+        session.user.email === 'reviewer@suraksha.demo' && (
+          <section className="claim-panel" aria-labelledby="moderation-title">
+            <div>
+              <p className="kicker">Evidence moderation</p>
+              <h2 id="moderation-title">Pending private media</h2>
+              <p>
+                Approval changes moderation status; originals remain private.
+              </p>
+            </div>
+            <div className="claim-list">
+              {reviewEvidence.length === 0 ? (
+                <p>No pending media.</p>
+              ) : (
+                reviewEvidence.map((item) => (
+                  <article key={item.id}>
+                    <span>{item.moderationStatus}</span>
+                    <strong>{item.originalName}</strong>
+                    <p>
+                      {item.mediaType} · {(item.byteSize / 1024).toFixed(1)} KB
+                    </p>
+                    <div className="decision-actions">
+                      <button
+                        onClick={() =>
+                          void moderateEvidence(item.id, 'approved')
+                        }
+                      >
+                        Approve
+                      </button>
+                      <button
+                        onClick={() =>
+                          void moderateEvidence(item.id, 'rejected')
+                        }
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </article>
+                ))
+              )}
+            </div>
+          </section>
+        )}
+      {session.authenticated &&
+        session.user.email === 'reviewer@suraksha.demo' && (
+          <section
+            className="claim-panel"
+            aria-labelledby="report-review-title"
+          >
+            <div>
+              <p className="kicker">Report moderation</p>
+              <h2 id="report-review-title">Duplicate review</h2>
+              <p>
+                Copy the target report ID to merge; source reports remain
+                recoverable.
+              </p>
+            </div>
+            <div className="claim-list">
+              {reviewReports.length === 0 ? (
+                <p>No reports.</p>
+              ) : (
+                reviewReports.map((report) => (
+                  <article key={report.id}>
+                    <span>
+                      {report.status} · ID {report.id}
+                    </span>
+                    <strong>{report.title}</strong>
+                    <p>
+                      {report.candidateName} ·{' '}
+                      {report.category.replaceAll('_', ' ')}
+                    </p>
+                    <div className="decision-actions">
+                      {report.status === 'merged' ? (
+                        <button onClick={() => void undoMerge(report.id)}>
+                          Unmerge
+                        </button>
+                      ) : (
+                        <button onClick={() => void mergeDuplicate(report.id)}>
+                          Merge duplicate
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                ))
+              )}
+            </div>
+            {reportMessage && <p role="alert">{reportMessage}</p>}
           </section>
         )}
       {session.authenticated &&
