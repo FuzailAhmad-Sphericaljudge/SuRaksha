@@ -434,7 +434,7 @@ export type IssueReportRecord = {
   title: string;
   description: string;
   visibility: 'private_review' | 'public_redacted' | 'confidential';
-  status: 'submitted';
+  status: 'submitted' | 'approved' | 'rejected' | 'merged';
   createdAt: string;
   evidenceIds: string[];
   mergedIntoReportId?: string | null;
@@ -513,6 +513,19 @@ export class IssueReportRepository {
       ),
     }));
   }
+  decide(
+    reportId: string,
+    status: 'approved' | 'rejected',
+    reason: string,
+  ): boolean {
+    return (
+      this.database
+        .prepare(
+          "UPDATE issue_reports SET status = ?, review_reason = ? WHERE id = ? AND status = 'submitted' AND merged_into_report_id IS NULL",
+        )
+        .run(status, reason, reportId).changes === 1
+    );
+  }
   merge(sourceId: string, targetId: string, reason: string): boolean {
     if (sourceId === targetId) return false;
     const target = this.database
@@ -543,5 +556,80 @@ export class IssueReportRepository {
         )
         .run(reason, sourceId).changes === 1
     );
+  }
+
+  publicProfile(candidateId: string) {
+    const candidate = this.database
+      .prepare(
+        'SELECT id, name, locality, property_type AS propertyType FROM property_candidates WHERE id = ?',
+      )
+      .get(candidateId) as
+      | Pick<
+          PropertyCandidateRecord,
+          'id' | 'name' | 'locality' | 'propertyType'
+        >
+      | undefined;
+    if (!candidate) return null;
+    const findings = this.database
+      .prepare(
+        `SELECT issue_reports.id, issue_reports.building_id AS buildingId,
+        managed_buildings.name AS buildingName, category, title, description,
+        issue_reports.created_at AS createdAt,
+        COUNT(DISTINCT evidence_uploads.id) AS approvedEvidenceCount
+        FROM issue_reports
+        LEFT JOIN managed_buildings ON managed_buildings.id = issue_reports.building_id
+        JOIN report_evidence ON report_evidence.report_id = issue_reports.id
+        JOIN evidence_uploads ON evidence_uploads.id = report_evidence.evidence_id
+          AND evidence_uploads.moderation_status = 'approved'
+        WHERE issue_reports.candidate_id = ?
+          AND issue_reports.visibility = 'public_redacted'
+          AND issue_reports.status = 'approved'
+          AND issue_reports.merged_into_report_id IS NULL
+        GROUP BY issue_reports.id
+        ORDER BY CASE category
+          WHEN 'fire_safety' THEN 1 WHEN 'structural' THEN 2
+          WHEN 'electrical' THEN 3 WHEN 'blocked_access' THEN 4
+          WHEN 'overcrowding' THEN 5 ELSE 6 END,
+          issue_reports.created_at DESC`,
+      )
+      .all(candidateId) as Array<{
+      id: string;
+      buildingId: string | null;
+      buildingName: string | null;
+      category: string;
+      title: string;
+      description: string;
+      createdAt: string;
+      approvedEvidenceCount: number;
+    }>;
+    const categories = [
+      ...new Set(findings.map((finding) => finding.category)),
+    ].map((category) => ({
+      category,
+      openFindings: findings.filter((finding) => finding.category === category)
+        .length,
+    }));
+    return {
+      candidate,
+      verification: {
+        level:
+          findings.length > 0
+            ? ('evidence_reviewed' as const)
+            : ('unverified' as const),
+        openFindings: findings.length,
+        latestReviewedEvidenceAt:
+          findings
+            .map((finding) => finding.createdAt)
+            .sort()
+            .at(-1) ?? null,
+      },
+      categories,
+      findings,
+      limitations: [
+        'Only reports marked public by the reporter and supported by approved evidence are shown.',
+        'No finding does not mean the property has been inspected or is safe.',
+        'Media stays private until a separate public redaction copy is available.',
+      ],
+    };
   }
 }

@@ -16,6 +16,7 @@ import {
   fetchHealth,
   fetchSession,
   fetchCandidates,
+  fetchPublicProfile,
   createCandidate,
   createPropertyClaim,
   createBuilding,
@@ -31,6 +32,7 @@ import {
   uploadEvidence,
   createIssueReport,
   decideEvidence,
+  decideReport,
   mergeReport,
   unmergeReport,
   loginDemoAccount,
@@ -44,6 +46,7 @@ import {
   type EvidenceUpload,
   type PublicBuilding,
   type IssueReport,
+  type PublicPropertyProfile,
 } from './api';
 import './styles.css';
 
@@ -97,6 +100,9 @@ function App() {
   const [authKind, setAuthKind] = useState<'register' | 'login'>('register');
   const [authError, setAuthError] = useState('');
   const [candidates, setCandidates] = useState<PropertyCandidate[]>([]);
+  const [publicProfile, setPublicProfile] =
+    useState<PublicPropertyProfile | null>(null);
+  const [profileMessage, setProfileMessage] = useState('');
   const [candidateMessage, setCandidateMessage] = useState('');
   const [claims, setClaims] = useState<PropertyClaim[]>([]);
   const [claimMessage, setClaimMessage] = useState('');
@@ -227,6 +233,23 @@ function App() {
       document
         .querySelector('#profiles')
         ?.scrollIntoView({ behavior: 'smooth' });
+  }
+
+  async function openPublicProfile(candidateId: string) {
+    setProfileMessage('Loading evidence-based profile…');
+    try {
+      setPublicProfile(await fetchPublicProfile(candidateId));
+      setProfileMessage('');
+      window.setTimeout(
+        () =>
+          document
+            .querySelector('#live-profile')
+            ?.scrollIntoView({ behavior: 'smooth' }),
+        0,
+      );
+    } catch {
+      setProfileMessage('This public profile could not be loaded.');
+    }
   }
 
   const normalized = query.trim().toLocaleLowerCase();
@@ -441,6 +464,18 @@ function App() {
     if (!reason) return;
     await unmergeReport(sourceId, reason);
     setReviewReports(await fetchReviewerReports());
+  }
+
+  async function moderateReport(id: string, status: 'approved' | 'rejected') {
+    const reason = window.prompt(`Reason for ${status}:`);
+    if (!reason) return;
+    try {
+      await decideReport(id, status, reason);
+      setReviewReports(await fetchReviewerReports());
+      setReportMessage(`Report ${status}.`);
+    } catch {
+      setReportMessage('Report decision failed.');
+    }
   }
 
   return (
@@ -746,10 +781,30 @@ function App() {
                         <button onClick={() => void undoMerge(report.id)}>
                           Unmerge
                         </button>
+                      ) : report.status === 'submitted' ? (
+                        <>
+                          <button
+                            onClick={() =>
+                              void moderateReport(report.id, 'approved')
+                            }
+                          >
+                            Approve public report
+                          </button>
+                          <button
+                            onClick={() =>
+                              void moderateReport(report.id, 'rejected')
+                            }
+                          >
+                            Reject
+                          </button>
+                          <button
+                            onClick={() => void mergeDuplicate(report.id)}
+                          >
+                            Merge duplicate
+                          </button>
+                        </>
                       ) : (
-                        <button onClick={() => void mergeDuplicate(report.id)}>
-                          Merge duplicate
-                        </button>
+                        <span>Review complete</span>
                       )}
                     </div>
                   </article>
@@ -1004,11 +1059,99 @@ function App() {
                   <strong>{candidate.name}</strong>
                   <p>{candidate.locality}</p>
                   <small>{candidate.propertyType.replaceAll('_', ' ')}</small>
+                  <button
+                    type="button"
+                    onClick={() => void openPublicProfile(candidate.id)}
+                  >
+                    View evidence profile
+                  </button>
                 </article>
               ))
             )}
           </div>
+          {profileMessage && <p role="status">{profileMessage}</p>}
         </section>
+
+        {publicProfile && (
+          <section
+            className="live-profile"
+            id="live-profile"
+            aria-labelledby="live-profile-title"
+          >
+            <header>
+              <div>
+                <p className="index">Public evidence profile</p>
+                <h2 id="live-profile-title">{publicProfile.candidate.name}</h2>
+                <p>
+                  {publicProfile.candidate.locality} ·{' '}
+                  {publicProfile.candidate.propertyType.replaceAll('_', ' ')}
+                </p>
+              </div>
+              <div
+                className={`verification ${publicProfile.verification.level}`}
+              >
+                <strong>
+                  {publicProfile.verification.level === 'evidence_reviewed'
+                    ? 'Reviewed evidence available'
+                    : 'No reviewed public evidence'}
+                </strong>
+                <span>
+                  {publicProfile.verification.openFindings} open public{' '}
+                  {publicProfile.verification.openFindings === 1
+                    ? 'finding'
+                    : 'findings'}
+                </span>
+                <small>
+                  {publicProfile.verification.latestReviewedEvidenceAt
+                    ? `Freshness: ${new Date(publicProfile.verification.latestReviewedEvidenceAt).toLocaleDateString()}`
+                    : 'Freshness unavailable'}
+                </small>
+              </div>
+            </header>
+            {publicProfile.categories.length > 0 && (
+              <div className="category-findings">
+                {publicProfile.categories.map((item) => (
+                  <span key={item.category}>
+                    {item.category.replaceAll('_', ' ')} · {item.openFindings}
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="public-findings">
+              {publicProfile.findings.length === 0 ? (
+                <div className="unknown-state">
+                  <strong>Safety status unknown</strong>
+                  <p>
+                    No moderated public finding is available. This is not a
+                    safety clearance or positive score.
+                  </p>
+                </div>
+              ) : (
+                publicProfile.findings.map((finding) => (
+                  <article key={finding.id}>
+                    <span>{finding.category.replaceAll('_', ' ')}</span>
+                    <h3>{finding.title}</h3>
+                    <p>{finding.description}</p>
+                    <small>
+                      {finding.buildingName ? `${finding.buildingName} · ` : ''}
+                      {finding.approvedEvidenceCount} approved evidence{' '}
+                      {finding.approvedEvidenceCount === 1 ? 'item' : 'items'} ·{' '}
+                      {new Date(finding.createdAt).toLocaleDateString()}
+                    </small>
+                  </article>
+                ))
+              )}
+            </div>
+            <aside className="profile-limitations">
+              <strong>Coverage and limitations</strong>
+              <ul>
+                {publicProfile.limitations.map((limitation) => (
+                  <li key={limitation}>{limitation}</li>
+                ))}
+              </ul>
+            </aside>
+          </section>
+        )}
 
         <section className="statement" id="purpose" data-reveal>
           <p className="index">01 / Purpose</p>

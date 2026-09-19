@@ -119,6 +119,8 @@ Generate building profiles from moderated reports and inspections. Show category
 
 Done when serious findings stay prominent and missing evidence never becomes a positive score.
 
+Status: partial — every candidate now has a database-backed public profile. Only reviewer-approved public reports with approved evidence appear; private, confidential, pending, rejected and merged reports are excluded. Profiles show severity-ordered category findings, open counts, freshness and explicit coverage limitations. Public redacted media derivatives and inspection history remain pending.
+
 ## Phase 13 — Owner repair workflow
 
 Owners acknowledge issues, post action plans, attach repair evidence and request reinspection. Students see deadlines and status history.

@@ -264,6 +264,19 @@ describe('API foundation', () => {
       (
         await app.inject({
           method: 'POST',
+          url: `/api/reviewer/reports/${report.json().id}/decision`,
+          headers: { cookie: reviewerCookie },
+          payload: {
+            status: 'approved',
+            reason: 'Public wording and location have been reviewed.',
+          },
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
           url: `/api/reviewer/reports/${duplicate.json().id}/merge`,
           headers: { cookie: reviewerCookie },
           payload: {
@@ -283,6 +296,17 @@ describe('API foundation', () => {
         })
       ).statusCode,
     ).toBe(200);
+    const publicProfile = await app.inject(
+      `/api/public/profiles/${candidate.json().id}`,
+    );
+    expect(publicProfile.statusCode).toBe(200);
+    expect(publicProfile.json()).toMatchObject({
+      candidate: { name: 'Real Student Hostel' },
+      verification: { level: 'evidence_reviewed', openFindings: 1 },
+      categories: [{ category: 'fire_safety', openFindings: 1 }],
+    });
+    expect(publicProfile.json().findings).toHaveLength(1);
+    expect(publicProfile.body).not.toContain('reporterUserId');
     expect((await app.inject('/api/candidates')).json()).toHaveLength(1);
     expect(
       (await app.inject('/api/candidates/search?q=kota&type=hostel')).json(),
@@ -290,6 +314,13 @@ describe('API foundation', () => {
     expect((await app.inject('/api/candidates/search?q=delhi')).json()).toEqual(
       [],
     );
+    expect(
+      (
+        await app.inject(
+          '/api/public/profiles/20000000-0000-4000-8000-000000000099',
+        )
+      ).statusCode,
+    ).toBe(404);
     expect(
       (
         await app.inject({

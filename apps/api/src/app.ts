@@ -217,6 +217,33 @@ export function createApp(options: AppOptions = {}) {
     );
   });
 
+  app.get('/api/public/profiles/:candidateId', async (request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    const identifier = z
+      .uuid()
+      .safeParse((request.params as { candidateId?: unknown }).candidateId);
+    if (!database || !identifier.success)
+      return reply.code(404).send({
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Property profile not found.',
+          requestId: request.id,
+        },
+      });
+    const profile = new IssueReportRepository(database).publicProfile(
+      identifier.data,
+    );
+    return profile
+      ? profile
+      : reply.code(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Property profile not found.',
+            requestId: request.id,
+          },
+        });
+  });
+
   app.post('/api/candidates', async (request, reply) => {
     const user = currentUser(request.headers);
     if (!user)
@@ -729,6 +756,43 @@ export function createApp(options: AppOptions = {}) {
         },
       });
     return database ? new IssueReportRepository(database).listForReview() : [];
+  });
+
+  app.post('/api/reviewer/reports/:id/decision', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user || !isDemoReviewer(user.email))
+      return reply.code(403).send({
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Reviewer access is required.',
+          requestId: request.id,
+        },
+      });
+    const identifier = z
+      .uuid()
+      .safeParse((request.params as { id?: unknown }).id);
+    const decision = claimDecisionSchema.safeParse(request.body);
+    if (!database || !identifier.success || !decision.success)
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'A valid decision and reason are required.',
+          requestId: request.id,
+        },
+      });
+    return new IssueReportRepository(database).decide(
+      identifier.data,
+      decision.data.status,
+      decision.data.reason,
+    )
+      ? { status: decision.data.status }
+      : reply.code(409).send({
+          error: {
+            code: 'CONFLICT',
+            message: 'Only a submitted, unmerged report can be reviewed.',
+            requestId: request.id,
+          },
+        });
   });
 
   app.post('/api/reviewer/reports/:id/merge', async (request, reply) => {

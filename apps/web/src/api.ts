@@ -139,6 +139,40 @@ export async function searchCandidates(
   return (await response.json()) as PropertyCandidate[];
 }
 
+export type PublicPropertyProfile = {
+  candidate: Pick<
+    PropertyCandidate,
+    'id' | 'name' | 'locality' | 'propertyType'
+  >;
+  verification: {
+    level: 'unverified' | 'evidence_reviewed';
+    openFindings: number;
+    latestReviewedEvidenceAt: string | null;
+  };
+  categories: Array<{ category: string; openFindings: number }>;
+  findings: Array<{
+    id: string;
+    buildingId: string | null;
+    buildingName: string | null;
+    category: string;
+    title: string;
+    description: string;
+    createdAt: string;
+    approvedEvidenceCount: number;
+  }>;
+  limitations: string[];
+};
+
+export async function fetchPublicProfile(
+  candidateId: string,
+): Promise<PublicPropertyProfile> {
+  const response = await fetch(`/api/public/profiles/${candidateId}`, {
+    cache: 'no-store',
+  });
+  if (!response.ok) throw new Error('Public profile unavailable.');
+  return (await response.json()) as PublicPropertyProfile;
+}
+
 export type PropertyClaim = {
   id: string;
   candidateId: string;
@@ -345,6 +379,19 @@ export async function fetchReviewerReports(): Promise<IssueReport[]> {
   });
   if (!response.ok) throw new Error('Report queue unavailable.');
   return (await response.json()) as IssueReport[];
+}
+export async function decideReport(
+  id: string,
+  status: 'approved' | 'rejected',
+  reason: string,
+) {
+  const response = await fetch(`/api/reviewer/reports/${id}/decision`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ status, reason }),
+  });
+  if (!response.ok) throw new Error('Report decision failed.');
 }
 export async function mergeReport(
   sourceId: string,
