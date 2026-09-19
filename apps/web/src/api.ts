@@ -607,3 +607,60 @@ export async function submitInspectionResult(
     inspectedAt,
   });
 }
+
+export type AppNotification = {
+  id: string;
+  eventType: string;
+  title: string;
+  message: string;
+  readAt: string | null;
+  createdAt: string;
+};
+export type NotificationPreferences = {
+  emailEnabled: number | boolean;
+  smsEnabled: number | boolean;
+  phoneNumber: string | null;
+};
+export type NotificationDelivery = {
+  id: string;
+  channel: string;
+  status: string;
+  attempts: number;
+  lastError: string | null;
+};
+export async function fetchNotifications(): Promise<AppNotification[]> {
+  const response = await fetch('/api/notifications', {
+    credentials: 'same-origin',
+    cache: 'no-store',
+  });
+  if (!response.ok) throw new Error('Notifications unavailable.');
+  return (await response.json()) as AppNotification[];
+}
+export async function markNotificationRead(id: string) {
+  return jsonRequest(`/api/notifications/${id}/read`, 'POST');
+}
+export async function fetchNotificationPreferences(): Promise<NotificationPreferences> {
+  const response = await fetch('/api/notification-preferences', {
+    credentials: 'same-origin',
+    cache: 'no-store',
+  });
+  if (!response.ok) throw new Error('Preferences unavailable.');
+  return (await response.json()) as NotificationPreferences;
+}
+export async function saveNotificationPreferences(input: {
+  emailEnabled: boolean;
+  smsEnabled: boolean;
+  phoneNumber: string | null;
+}) {
+  return jsonRequest('/api/notification-preferences', 'PUT', input);
+}
+export async function fetchNotificationDeliveries(): Promise<
+  NotificationDelivery[]
+> {
+  const response = await fetch('/api/notification-deliveries', {
+    credentials: 'same-origin',
+    cache: 'no-store',
+  });
+  if (!response.ok) throw new Error('Delivery history unavailable.');
+  return (await response.json()) as NotificationDelivery[];
+}

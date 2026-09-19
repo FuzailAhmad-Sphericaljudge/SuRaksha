@@ -359,6 +359,20 @@ describe('API foundation', () => {
       role: 'owner_manager',
       reviewStatus: 'pending_review',
     });
+    expect(
+      (
+        await app.inject({
+          method: 'PUT',
+          url: '/api/notification-preferences',
+          headers: { cookie: registration.headers['set-cookie'] },
+          payload: {
+            emailEnabled: true,
+            smsEnabled: true,
+            phoneNumber: '+919876543210',
+          },
+        })
+      ).statusCode,
+    ).toBe(200);
     const candidate = await app.inject({
       method: 'POST',
       url: '/api/candidates',
@@ -438,6 +452,38 @@ describe('API foundation', () => {
         })
       ).json().profile.reviewStatus,
     ).toBe('active');
+    const notifications = await app.inject({
+      url: '/api/notifications',
+      headers: { cookie: registration.headers['set-cookie'] },
+    });
+    expect(notifications.json()).toHaveLength(1);
+    expect(notifications.body).not.toContain('registered lease');
+    const deliveries = await app.inject({
+      url: '/api/notification-deliveries',
+      headers: { cookie: registration.headers['set-cookie'] },
+    });
+    expect(deliveries.json()).toHaveLength(2);
+    const deliveryId = deliveries.json()[0].id;
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: `/api/reviewer/notification-deliveries/${deliveryId}/attempt`,
+          headers: { cookie: reviewerCookie },
+          payload: { success: false, error: 'Demo provider unavailable' },
+        })
+      ).json().status,
+    ).toBe('failed');
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: `/api/reviewer/notification-deliveries/${deliveryId}/attempt`,
+          headers: { cookie: reviewerCookie },
+          payload: { success: true, error: null },
+        })
+      ).json().status,
+    ).toBe('sent');
     const building = await app.inject({
       method: 'POST',
       url: '/api/buildings',

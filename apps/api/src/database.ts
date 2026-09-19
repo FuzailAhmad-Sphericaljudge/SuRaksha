@@ -122,6 +122,23 @@ export function openDatabase(path: string) {
     );
     INSERT OR IGNORE INTO schema_migrations(version, applied_at)
       VALUES (11, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    CREATE TABLE IF NOT EXISTS notification_preferences (
+      user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      email_enabled INTEGER NOT NULL DEFAULT 0, sms_enabled INTEGER NOT NULL DEFAULT 0,
+      phone_number TEXT, updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS notifications (
+      id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      event_type TEXT NOT NULL, title TEXT NOT NULL, message TEXT NOT NULL,
+      read_at TEXT, created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS notification_deliveries (
+      id TEXT PRIMARY KEY, notification_id TEXT NOT NULL REFERENCES notifications(id) ON DELETE CASCADE,
+      channel TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'queued', attempts INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT, updated_at TEXT NOT NULL
+    );
+    INSERT OR IGNORE INTO schema_migrations(version, applied_at)
+      VALUES (12, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
   `);
   const candidateColumns = database
     .prepare('PRAGMA table_info(property_candidates)')
@@ -1079,5 +1096,111 @@ export class InspectionRepository {
       this.database.exec('ROLLBACK');
       return false;
     }
+  }
+}
+
+export class NotificationRepository {
+  constructor(private readonly database: DatabaseSync) {}
+  preferences(userId: string) {
+    return (
+      (this.database
+        .prepare(
+          'SELECT email_enabled AS emailEnabled, sms_enabled AS smsEnabled, phone_number AS phoneNumber FROM notification_preferences WHERE user_id = ?',
+        )
+        .get(userId) as
+        | {
+            emailEnabled: number;
+            smsEnabled: number;
+            phoneNumber: string | null;
+          }
+        | undefined) ?? { emailEnabled: 0, smsEnabled: 0, phoneNumber: null }
+    );
+  }
+  savePreferences(
+    userId: string,
+    email: boolean,
+    sms: boolean,
+    phone: string | null,
+    now: string,
+  ) {
+    this.database
+      .prepare(
+        `INSERT INTO notification_preferences(user_id,email_enabled,sms_enabled,phone_number,updated_at)
+      VALUES (?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET email_enabled=excluded.email_enabled,
+      sms_enabled=excluded.sms_enabled,phone_number=excluded.phone_number,updated_at=excluded.updated_at`,
+      )
+      .run(userId, email ? 1 : 0, sms ? 1 : 0, phone, now);
+  }
+  create(input: {
+    id: string;
+    userId: string;
+    eventType: string;
+    title: string;
+    message: string;
+    now: string;
+  }) {
+    this.database
+      .prepare(
+        'INSERT INTO notifications(id,user_id,event_type,title,message,created_at) VALUES (?,?,?,?,?,?)',
+      )
+      .run(
+        input.id,
+        input.userId,
+        input.eventType,
+        input.title,
+        input.message,
+        input.now,
+      );
+    const preferences = this.preferences(input.userId);
+    const insert = this.database.prepare(
+      "INSERT INTO notification_deliveries(id,notification_id,channel,status,updated_at) VALUES (?,?,?,'queued',?)",
+    );
+    if (preferences.emailEnabled)
+      insert.run(`${input.id}-email`, input.id, 'email', input.now);
+    if (preferences.smsEnabled && preferences.phoneNumber)
+      insert.run(`${input.id}-sms`, input.id, 'sms', input.now);
+  }
+  list(userId: string) {
+    return this.database
+      .prepare(
+        `SELECT id,event_type AS eventType,title,message,read_at AS readAt,created_at AS createdAt
+      FROM notifications WHERE user_id = ? ORDER BY created_at DESC`,
+      )
+      .all(userId);
+  }
+  markRead(id: string, userId: string, now: string): boolean {
+    return (
+      this.database
+        .prepare(
+          'UPDATE notifications SET read_at = COALESCE(read_at, ?) WHERE id = ? AND user_id = ?',
+        )
+        .run(now, id, userId).changes === 1
+    );
+  }
+  deliveries(userId?: string) {
+    return this.database
+      .prepare(
+        `SELECT notification_deliveries.id, notification_id AS notificationId, channel,
+      status, attempts, last_error AS lastError, notification_deliveries.updated_at AS updatedAt
+      FROM notification_deliveries JOIN notifications ON notifications.id = notification_deliveries.notification_id
+      WHERE (? IS NULL OR notifications.user_id = ?) ORDER BY notification_deliveries.updated_at DESC`,
+      )
+      .all(userId ?? null, userId ?? null);
+  }
+  attempt(
+    id: string,
+    success: boolean,
+    error: string | null,
+    now: string,
+  ): boolean {
+    return (
+      this.database
+        .prepare(
+          `UPDATE notification_deliveries SET status = ?, attempts = attempts + 1,
+      last_error = ?, updated_at = ? WHERE id = ? AND status IN ('queued','failed')`,
+        )
+        .run(success ? 'sent' : 'failed', success ? null : error, now, id)
+        .changes === 1
+    );
   }
 }

@@ -24,6 +24,7 @@ import {
   IssueReportRepository,
   RepairRepository,
   InspectionRepository,
+  NotificationRepository,
   PropertyCandidateRepository,
 } from './database.js';
 import {
@@ -207,6 +208,19 @@ export function createApp(options: AppOptions = {}) {
     notes: z.string().trim().min(20).max(4000),
     inspectedAt: z.iso.datetime(),
   });
+  const notificationPreferencesSchema = z
+    .strictObject({
+      emailEnabled: z.boolean(),
+      smsEnabled: z.boolean(),
+      phoneNumber: z
+        .string()
+        .trim()
+        .regex(/^\+[1-9]\d{7,14}$/)
+        .nullable(),
+    })
+    .refine((value) => !value.smsEnabled || value.phoneNumber, {
+      message: 'A phone number is required for SMS.',
+    });
   app.register(fastifyMultipart, {
     limits: { files: 1, fileSize: 50_000_000, fields: 4 },
   });
@@ -441,12 +455,25 @@ export function createApp(options: AppOptions = {}) {
           requestId: request.id,
         },
       });
-    const decided = new PropertyClaimRepository(database).decide(
+    const claimRepository = new PropertyClaimRepository(database);
+    const claim = claimRepository
+      .listPending()
+      .find((item) => item.id === identifier.data);
+    const decided = claimRepository.decide(
       identifier.data,
       parsed.data.status,
       parsed.data.reason,
       now().toISOString(),
     );
+    if (decided && claim)
+      new NotificationRepository(database).create({
+        id: randomUUID(),
+        userId: claim.claimantUserId,
+        eventType: 'claim_decision',
+        title: 'Property claim updated',
+        message: `Your property claim review is complete: ${parsed.data.status}. Open SafePG for details.`,
+        now: now().toISOString(),
+      });
     return decided
       ? { status: parsed.data.status }
       : reply.code(404).send({
@@ -457,6 +484,162 @@ export function createApp(options: AppOptions = {}) {
           },
         });
   });
+
+  app.get('/api/notifications', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user)
+      return reply.code(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Sign-in is required.',
+          requestId: request.id,
+        },
+      });
+    return database ? new NotificationRepository(database).list(user.id) : [];
+  });
+
+  app.post('/api/notifications/:id/read', async (request, reply) => {
+    const user = currentUser(request.headers);
+    const identifier = z
+      .uuid()
+      .safeParse((request.params as { id?: unknown }).id);
+    if (!user)
+      return reply.code(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Sign-in is required.',
+          requestId: request.id,
+        },
+      });
+    if (!database || !identifier.success)
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Valid notification required.',
+          requestId: request.id,
+        },
+      });
+    return new NotificationRepository(database).markRead(
+      identifier.data,
+      user.id,
+      now().toISOString(),
+    )
+      ? { status: 'read' }
+      : reply.code(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Notification not found.',
+            requestId: request.id,
+          },
+        });
+  });
+
+  app.get('/api/notification-preferences', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user)
+      return reply.code(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Sign-in is required.',
+          requestId: request.id,
+        },
+      });
+    return database
+      ? new NotificationRepository(database).preferences(user.id)
+      : { emailEnabled: 0, smsEnabled: 0, phoneNumber: null };
+  });
+
+  app.put('/api/notification-preferences', async (request, reply) => {
+    const user = currentUser(request.headers);
+    const parsed = notificationPreferencesSchema.safeParse(request.body);
+    if (!user)
+      return reply.code(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Sign-in is required.',
+          requestId: request.id,
+        },
+      });
+    if (!database || !parsed.success)
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Valid channel preferences are required.',
+          requestId: request.id,
+        },
+      });
+    new NotificationRepository(database).savePreferences(
+      user.id,
+      parsed.data.emailEnabled,
+      parsed.data.smsEnabled,
+      parsed.data.phoneNumber,
+      now().toISOString(),
+    );
+    return { ...parsed.data };
+  });
+
+  app.get('/api/notification-deliveries', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user)
+      return reply.code(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Sign-in is required.',
+          requestId: request.id,
+        },
+      });
+    return database
+      ? new NotificationRepository(database).deliveries(user.id)
+      : [];
+  });
+
+  app.post(
+    '/api/reviewer/notification-deliveries/:id/attempt',
+    async (request, reply) => {
+      const user = currentUser(request.headers);
+      const id = z
+        .string()
+        .min(3)
+        .max(100)
+        .safeParse((request.params as { id?: unknown }).id);
+      const parsed = z
+        .strictObject({
+          success: z.boolean(),
+          error: z.string().trim().min(3).max(300).nullable(),
+        })
+        .safeParse(request.body);
+      if (!user || !isDemoReviewer(user.email))
+        return reply.code(403).send({
+          error: {
+            code: 'FORBIDDEN',
+            message: 'Reviewer access is required.',
+            requestId: request.id,
+          },
+        });
+      if (!database || !id.success || !parsed.success)
+        return reply.code(400).send({
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'A valid delivery attempt is required.',
+            requestId: request.id,
+          },
+        });
+      return new NotificationRepository(database).attempt(
+        id.data,
+        parsed.data.success,
+        parsed.data.error,
+        now().toISOString(),
+      )
+        ? { status: parsed.data.success ? 'sent' : 'failed' }
+        : reply.code(409).send({
+            error: {
+              code: 'CONFLICT',
+              message: 'Delivery is not retryable.',
+              requestId: request.id,
+            },
+          });
+    },
+  );
 
   app.get('/api/buildings/mine', async (request, reply) => {
     const user = currentUser(request.headers);

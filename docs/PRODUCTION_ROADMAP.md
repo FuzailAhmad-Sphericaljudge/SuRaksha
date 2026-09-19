@@ -143,6 +143,8 @@ Add in-app notifications first, then opted-in email/SMS for claim decisions, rep
 
 Done when notification preferences, retry and delivery history work without exposing confidential report details.
 
+Status: complete at the application layer — signed-in users have a persisted inbox, read state, email/SMS opt-in preferences and per-channel delivery history. Failed deliveries remain retryable and claim decisions generate generic notifications without report evidence or confidential text. Demo mode uses a deterministic delivery-attempt adapter; production email/SMS provider credentials belong to deployment configuration.
+
 ## Phase 16 — Parent and guardian experience
 
 Add student-approved sharing, saved properties and evidence summaries. Prevent covert tracking and unnecessary personal-data exposure.

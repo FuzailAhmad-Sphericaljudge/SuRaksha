@@ -48,6 +48,11 @@ import {
   fetchInspections,
   declareInspectionConflict,
   submitInspectionResult,
+  fetchNotifications,
+  markNotificationRead,
+  fetchNotificationPreferences,
+  saveNotificationPreferences,
+  fetchNotificationDeliveries,
   loginDemoAccount,
   logoutDemoAccount,
   registerDemoAccount,
@@ -64,6 +69,9 @@ import {
   type EligibleRepairReport,
   type Credential,
   type InspectionAssignment,
+  type AppNotification,
+  type NotificationPreferences,
+  type NotificationDelivery,
 } from './api';
 import './styles.css';
 
@@ -143,6 +151,16 @@ function App() {
   const [reviewCredentials, setReviewCredentials] = useState<Credential[]>([]);
   const [inspections, setInspections] = useState<InspectionAssignment[]>([]);
   const [inspectionMessage, setInspectionMessage] = useState('');
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [notificationPreferences, setNotificationPreferences] =
+    useState<NotificationPreferences>({
+      emailEnabled: false,
+      smsEnabled: false,
+      phoneNumber: null,
+    });
+  const [notificationDeliveries, setNotificationDeliveries] = useState<
+    NotificationDelivery[]
+  >([]);
   const [query, setQuery] = useState('');
   const [message, setMessage] = useState(
     'Search is a visual preview. No live properties are indexed.',
@@ -178,6 +196,9 @@ function App() {
       void fetchMyReports()
         .then(setReports)
         .catch(() => setReportMessage('Reports could not be loaded.'));
+      void fetchNotifications().then(setNotifications);
+      void fetchNotificationPreferences().then(setNotificationPreferences);
+      void fetchNotificationDeliveries().then(setNotificationDeliveries);
     }
     if (session.authenticated && session.profile?.role === 'owner_manager') {
       void fetchMyClaims()
@@ -646,6 +667,29 @@ function App() {
         error instanceof Error ? error.message : 'Result failed.',
       );
     }
+  }
+
+  async function saveNotificationSettings(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const smsEnabled = data.get('smsEnabled') === 'on';
+    try {
+      await saveNotificationPreferences({
+        emailEnabled: data.get('emailEnabled') === 'on',
+        smsEnabled,
+        phoneNumber: smsEnabled ? String(data.get('phoneNumber')) : null,
+      });
+      setNotificationPreferences(await fetchNotificationPreferences());
+    } catch (error) {
+      setInspectionMessage(
+        error instanceof Error ? error.message : 'Preferences failed.',
+      );
+    }
+  }
+
+  async function readNotification(id: string) {
+    await markNotificationRead(id);
+    setNotifications(await fetchNotifications());
   }
 
   return (
@@ -1267,6 +1311,75 @@ function App() {
               </article>
             ))}
           </div>
+        </section>
+      )}
+      {session.authenticated && (
+        <section className="claim-panel" aria-labelledby="notifications-title">
+          <div>
+            <p className="kicker">Private updates</p>
+            <h2 id="notifications-title">Notifications</h2>
+            <p>
+              External messages contain a generic update only. Open SafePG after
+              signing in for details.
+            </p>
+          </div>
+          <form onSubmit={saveNotificationSettings}>
+            <label>
+              <input
+                type="checkbox"
+                name="emailEnabled"
+                defaultChecked={Boolean(notificationPreferences.emailEnabled)}
+              />{' '}
+              Email
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                name="smsEnabled"
+                defaultChecked={Boolean(notificationPreferences.smsEnabled)}
+              />{' '}
+              SMS
+            </label>
+            <input
+              name="phoneNumber"
+              defaultValue={notificationPreferences.phoneNumber ?? ''}
+              placeholder="+919876543210"
+            />
+            <button type="submit">Save preferences</button>
+          </form>
+          <div className="claim-list">
+            {notifications.length === 0 ? (
+              <p>No notifications yet.</p>
+            ) : (
+              notifications.map((notification) => (
+                <article key={notification.id}>
+                  <span>{notification.readAt ? 'read' : 'new'}</span>
+                  <strong>{notification.title}</strong>
+                  <p>{notification.message}</p>
+                  {!notification.readAt && (
+                    <button
+                      onClick={() => void readNotification(notification.id)}
+                    >
+                      Mark read
+                    </button>
+                  )}
+                </article>
+              ))
+            )}
+          </div>
+          {notificationDeliveries.length > 0 && (
+            <p>
+              <small>
+                Delivery history:{' '}
+                {notificationDeliveries
+                  .map(
+                    (item) =>
+                      `${item.channel} ${item.status} (${item.attempts})`,
+                  )
+                  .join(' · ')}
+              </small>
+            </p>
+          )}
         </section>
       )}
       {session.authenticated && session.profile?.role === 'professional' && (
