@@ -11,6 +11,7 @@ const configSchema = z.object({
     .default('info'),
   APP_MODE: z.enum(['demo', 'production']).default('demo'),
   DATABASE_PATH: z.string().trim().min(1).optional(),
+  UPLOAD_PATH: z.string().trim().min(1).optional(),
 });
 
 export function readConfig(environment: NodeJS.ProcessEnv) {
@@ -26,5 +27,6 @@ export function readConfig(environment: NodeJS.ProcessEnv) {
   return {
     ...result.data,
     DATABASE_PATH: result.data.DATABASE_PATH ?? 'data/suraksha-demo.sqlite',
+    UPLOAD_PATH: result.data.UPLOAD_PATH ?? 'data/uploads-demo',
   };
 }

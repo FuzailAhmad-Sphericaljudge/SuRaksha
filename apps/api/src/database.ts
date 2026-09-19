@@ -64,6 +64,14 @@ export function openDatabase(path: string) {
     );
     INSERT OR IGNORE INTO schema_migrations(version, applied_at)
       VALUES (6, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    CREATE TABLE IF NOT EXISTS evidence_uploads (
+      id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      original_name TEXT NOT NULL, media_type TEXT NOT NULL, byte_size INTEGER NOT NULL,
+      sha256 TEXT NOT NULL, storage_key TEXT NOT NULL UNIQUE,
+      moderation_status TEXT NOT NULL DEFAULT 'pending', created_at TEXT NOT NULL
+    );
+    INSERT OR IGNORE INTO schema_migrations(version, applied_at)
+      VALUES (7, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
   `);
   const candidateColumns = database
     .prepare('PRAGMA table_info(property_candidates)')
@@ -288,5 +296,53 @@ export class ManagedBuildingRepository {
         'SELECT id, candidate_id AS candidateId, owner_user_id AS ownerUserId, name, floors, created_at AS createdAt FROM managed_buildings WHERE owner_user_id = ? ORDER BY created_at DESC',
       )
       .all(userId) as ManagedBuildingRecord[];
+  }
+}
+
+export type EvidenceUploadRecord = {
+  id: string;
+  userId: string;
+  originalName: string;
+  mediaType: string;
+  byteSize: number;
+  sha256: string;
+  storageKey: string;
+  moderationStatus: 'pending' | 'approved' | 'rejected';
+  createdAt: string;
+};
+export class EvidenceUploadRepository {
+  constructor(private readonly database: DatabaseSync) {}
+  save(record: EvidenceUploadRecord) {
+    this.database
+      .prepare(
+        'INSERT INTO evidence_uploads(id, user_id, original_name, media_type, byte_size, sha256, storage_key, moderation_status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      )
+      .run(
+        record.id,
+        record.userId,
+        record.originalName,
+        record.mediaType,
+        record.byteSize,
+        record.sha256,
+        record.storageKey,
+        record.moderationStatus,
+        record.createdAt,
+      );
+  }
+  listForUser(userId: string): EvidenceUploadRecord[] {
+    return this.database
+      .prepare(
+        'SELECT id, user_id AS userId, original_name AS originalName, media_type AS mediaType, byte_size AS byteSize, sha256, storage_key AS storageKey, moderation_status AS moderationStatus, created_at AS createdAt FROM evidence_uploads WHERE user_id = ? ORDER BY created_at DESC',
+      )
+      .all(userId) as EvidenceUploadRecord[];
+  }
+  getForUser(id: string, userId: string): EvidenceUploadRecord | null {
+    return (
+      (this.database
+        .prepare(
+          'SELECT id, user_id AS userId, original_name AS originalName, media_type AS mediaType, byte_size AS byteSize, sha256, storage_key AS storageKey, moderation_status AS moderationStatus, created_at AS createdAt FROM evidence_uploads WHERE id = ? AND user_id = ?',
+        )
+        .get(id, userId) as EvidenceUploadRecord | undefined) ?? null
+    );
   }
 }

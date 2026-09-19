@@ -1,7 +1,11 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { IncomingHttpHeaders } from 'node:http';
+import { createReadStream } from 'node:fs';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { basename, resolve } from 'node:path';
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
+import fastifyMultipart from '@fastify/multipart';
 import { z } from 'zod';
 import type { DatabaseSync } from 'node:sqlite';
 import {
@@ -16,6 +20,7 @@ import {
   AccountProfileRepository,
   PropertyClaimRepository,
   ManagedBuildingRepository,
+  EvidenceUploadRepository,
   PropertyCandidateRepository,
 } from './database.js';
 import {
@@ -33,12 +38,33 @@ type AppOptions = {
   webRoot?: string;
   mode?: 'demo' | 'production';
   database?: DatabaseSync;
+  uploadRoot?: string;
 };
+
+function contentMatchesMediaType(mediaType: string, buffer: Buffer) {
+  if (mediaType === 'image/jpeg')
+    return buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  if (mediaType === 'image/png')
+    return buffer
+      .subarray(0, 8)
+      .equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  if (mediaType === 'image/webp')
+    return (
+      buffer.subarray(0, 4).toString() === 'RIFF' &&
+      buffer.subarray(8, 12).toString() === 'WEBP'
+    );
+  if (mediaType === 'video/mp4')
+    return buffer.subarray(4, 8).toString() === 'ftyp';
+  if (mediaType === 'video/webm')
+    return buffer.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]));
+  return false;
+}
 
 export function createApp(options: AppOptions = {}) {
   const now = options.now ?? (() => new Date());
   const mode = options.mode ?? 'demo';
   const database = options.database;
+  const uploadRoot = options.uploadRoot ? resolve(options.uploadRoot) : null;
   const credentialsSchema = z.strictObject({
     email: z.email().max(320),
     password: z.string().min(8).max(128),
@@ -95,6 +121,9 @@ export function createApp(options: AppOptions = {}) {
       : false,
     genReqId: () => randomUUID(),
     bodyLimit: 1_048_576,
+  });
+  app.register(fastifyMultipart, {
+    limits: { files: 1, fileSize: 50_000_000, fields: 4 },
   });
 
   app.addHook('onSend', async (_request, reply) => {
@@ -330,6 +359,151 @@ export function createApp(options: AppOptions = {}) {
     return database
       ? new ManagedBuildingRepository(database).listForOwner(user.id)
       : [];
+  });
+
+  app.get('/api/evidence/mine', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user)
+      return reply.code(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Sign-in is required.',
+          requestId: request.id,
+        },
+      });
+    if (!database) return [];
+    return new EvidenceUploadRepository(database)
+      .listForUser(user.id)
+      .map(({ storageKey: _storageKey, userId: _userId, ...record }) => record);
+  });
+
+  app.post('/api/evidence/upload', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user)
+      return reply.code(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Sign-in is required.',
+          requestId: request.id,
+        },
+      });
+    if (!database || !uploadRoot)
+      return reply.code(503).send({
+        error: {
+          code: 'UPLOAD_UNAVAILABLE',
+          message: 'Private upload storage is unavailable.',
+          requestId: request.id,
+        },
+      });
+    const part = await request.file();
+    if (!part)
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Choose one photo or video.',
+          requestId: request.id,
+        },
+      });
+    const extensions: Record<string, string> = {
+      'image/jpeg': 'jpg',
+      'image/png': 'png',
+      'image/webp': 'webp',
+      'video/mp4': 'mp4',
+      'video/webm': 'webm',
+    };
+    const extension = extensions[part.mimetype];
+    if (!extension)
+      return reply.code(415).send({
+        error: {
+          code: 'UNSUPPORTED_MEDIA_TYPE',
+          message: 'Only JPEG, PNG, WebP, MP4 and WebM files are accepted.',
+          requestId: request.id,
+        },
+      });
+    const buffer = await part.toBuffer();
+    const maximum = part.mimetype.startsWith('image/')
+      ? 10_000_000
+      : 50_000_000;
+    if (buffer.length === 0 || buffer.length > maximum)
+      return reply.code(413).send({
+        error: {
+          code: 'FILE_TOO_LARGE',
+          message: 'Photo limit is 10 MB and video limit is 50 MB.',
+          requestId: request.id,
+        },
+      });
+    if (!contentMatchesMediaType(part.mimetype, buffer))
+      return reply.code(415).send({
+        error: {
+          code: 'UNSUPPORTED_MEDIA_TYPE',
+          message: 'File content does not match its declared media type.',
+          requestId: request.id,
+        },
+      });
+    const id = randomUUID();
+    const storageKey = `${user.id}/${id}.${extension}`;
+    const path = resolve(uploadRoot, storageKey);
+    if (
+      !path.startsWith(`${uploadRoot}\\`) &&
+      !path.startsWith(`${uploadRoot}/`)
+    )
+      throw new Error('Invalid storage path');
+    await mkdir(resolve(uploadRoot, user.id), { recursive: true });
+    await writeFile(path, buffer, { flag: 'wx' });
+    const record = {
+      id,
+      userId: user.id,
+      originalName: basename(part.filename).slice(0, 180),
+      mediaType: part.mimetype,
+      byteSize: buffer.length,
+      sha256: createHash('sha256').update(buffer).digest('hex'),
+      storageKey,
+      moderationStatus: 'pending' as const,
+      createdAt: now().toISOString(),
+    };
+    new EvidenceUploadRepository(database).save(record);
+    const {
+      storageKey: _storageKey,
+      userId: _userId,
+      ...publicRecord
+    } = record;
+    return reply.code(201).send(publicRecord);
+  });
+
+  app.get('/api/evidence/:id/file', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user)
+      return reply.code(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Sign-in is required.',
+          requestId: request.id,
+        },
+      });
+    const identifier = z
+      .uuid()
+      .safeParse((request.params as { id?: unknown }).id);
+    const record =
+      identifier.success && database
+        ? new EvidenceUploadRepository(database).getForUser(
+            identifier.data,
+            user.id,
+          )
+        : null;
+    if (!record || !uploadRoot)
+      return reply.code(404).send({
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Evidence not found.',
+          requestId: request.id,
+        },
+      });
+    reply.header('Content-Type', record.mediaType);
+    reply.header(
+      'Content-Disposition',
+      `attachment; filename="${encodeURIComponent(record.originalName)}"`,
+    );
+    return reply.send(createReadStream(resolve(uploadRoot, record.storageKey)));
   });
 
   app.post('/api/buildings', async (request, reply) => {

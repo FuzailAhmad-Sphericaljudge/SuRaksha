@@ -227,3 +227,33 @@ export async function createBuilding(input: {
     throw new Error(body?.error?.message ?? 'Building creation failed.');
   return body as ManagedBuilding;
 }
+
+export type EvidenceUpload = {
+  id: string;
+  originalName: string;
+  mediaType: string;
+  byteSize: number;
+  sha256: string;
+  moderationStatus: 'pending' | 'approved' | 'rejected';
+  createdAt: string;
+};
+export async function fetchMyEvidence(): Promise<EvidenceUpload[]> {
+  const response = await fetch('/api/evidence/mine', {
+    cache: 'no-store',
+    credentials: 'same-origin',
+  });
+  if (!response.ok) throw new Error('Evidence unavailable.');
+  return (await response.json()) as EvidenceUpload[];
+}
+export async function uploadEvidence(file: File): Promise<EvidenceUpload> {
+  const form = new FormData();
+  form.set('file', file);
+  const response = await fetch('/api/evidence/upload', {
+    method: 'POST',
+    credentials: 'same-origin',
+    body: form,
+  });
+  const body = await response.json();
+  if (!response.ok) throw new Error(body?.error?.message ?? 'Upload failed.');
+  return body as EvidenceUpload;
+}

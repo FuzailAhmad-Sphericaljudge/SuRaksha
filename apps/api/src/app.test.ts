@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   apiErrorSchema,
   bootstrapResponseSchema,
@@ -9,8 +12,11 @@ import { readConfig } from './config.js';
 import { openDatabase } from './database.js';
 
 const apps: ReturnType<typeof createApp>[] = [];
+const uploadDirectories: string[] = [];
 afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.close()));
+  for (const directory of uploadDirectories.splice(0))
+    rmSync(directory, { recursive: true, force: true });
 });
 
 describe('API foundation', () => {
@@ -93,9 +99,12 @@ describe('API foundation', () => {
 
   it('registers, restores and revokes a demo session through an HttpOnly cookie', async () => {
     const database = openDatabase(':memory:');
+    const uploadRoot = mkdtempSync(join(tmpdir(), 'suraksha-upload-'));
+    uploadDirectories.push(uploadRoot);
     const app = createApp({
       mode: 'demo',
       database,
+      uploadRoot,
       now: () => new Date('2026-09-16T10:30:00Z'),
     });
     apps.push(app);
@@ -111,6 +120,37 @@ describe('API foundation', () => {
     expect(registration.statusCode).toBe(201);
     const cookie = registration.headers['set-cookie'];
     expect(cookie).toContain('HttpOnly');
+    const boundary = 'suraksha-test-boundary';
+    const uploadBody = Buffer.concat([
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="issue.jpg"\r\nContent-Type: image/jpeg\r\n\r\n`,
+      ),
+      Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]),
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ]);
+    const upload = await app.inject({
+      method: 'POST',
+      url: '/api/evidence/upload',
+      headers: {
+        cookie,
+        'content-type': `multipart/form-data; boundary=${boundary}`,
+      },
+      payload: uploadBody,
+    });
+    expect(upload.statusCode).toBe(201);
+    expect(upload.json()).toMatchObject({
+      mediaType: 'image/jpeg',
+      moderationStatus: 'pending',
+    });
+    expect(upload.body).not.toContain('storageKey');
+    expect(
+      (
+        await app.inject({ url: '/api/evidence/mine', headers: { cookie } })
+      ).json(),
+    ).toHaveLength(1);
+    expect(
+      (await app.inject(`/api/evidence/${upload.json().id}/file`)).statusCode,
+    ).toBe(401);
     expect(
       (await app.inject({ url: '/api/session', headers: { cookie } })).json(),
     ).toMatchObject({

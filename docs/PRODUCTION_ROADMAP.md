@@ -95,6 +95,8 @@ Add authorized uploads, private object storage, checksums, file inspection, imag
 
 Done when unauthorized originals cannot be read and only cleared derivatives can appear publicly.
 
+Status: partial — authenticated users can upload validated JPEG/PNG/WebP/MP4/WebM originals to private storage, metadata and SHA-256 persist, owners can reload/download their files, and anonymous reads fail. Public derivatives, moderation controls, retry and retention remain pending.
+
 ## Phase 10 — Working issue reporting
 
 Build building/floor/area selection, issue form, draft save, photo/video attachment, privacy choice and submission receipt.

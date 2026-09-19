@@ -16,6 +16,7 @@ const app = createApp({
   logLevel: config.LOG_LEVEL,
   mode: config.APP_MODE,
   database,
+  uploadRoot: config.UPLOAD_PATH,
   ...(existsSync(webRoot) ? { webRoot } : {}),
 });
 

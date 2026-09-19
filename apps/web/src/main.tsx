@@ -20,9 +20,11 @@ import {
   createPropertyClaim,
   createBuilding,
   decideClaim,
+  fetchMyEvidence,
   fetchMyClaims,
   fetchMyBuildings,
   fetchReviewerClaims,
+  uploadEvidence,
   loginDemoAccount,
   logoutDemoAccount,
   registerDemoAccount,
@@ -31,6 +33,7 @@ import {
   type PropertyCandidate,
   type PropertyClaim,
   type ManagedBuilding,
+  type EvidenceUpload,
 } from './api';
 import './styles.css';
 
@@ -90,6 +93,8 @@ function App() {
   const [reviewClaims, setReviewClaims] = useState<PropertyClaim[]>([]);
   const [buildings, setBuildings] = useState<ManagedBuilding[]>([]);
   const [buildingMessage, setBuildingMessage] = useState('');
+  const [evidence, setEvidence] = useState<EvidenceUpload[]>([]);
+  const [uploadMessage, setUploadMessage] = useState('');
   const [query, setQuery] = useState('');
   const [message, setMessage] = useState(
     'Search is a visual preview. No live properties are indexed.',
@@ -100,6 +105,10 @@ function App() {
   const [selectedId, setSelectedId] = useState(demoProperty.id);
 
   useEffect(() => {
+    if (session.authenticated)
+      void fetchMyEvidence()
+        .then(setEvidence)
+        .catch(() => setUploadMessage('Evidence could not be loaded.'));
     const controller = new AbortController();
     void Promise.all([
       fetchHealth(controller.signal),
@@ -328,6 +337,27 @@ function App() {
     } catch (error) {
       setBuildingMessage(
         error instanceof Error ? error.message : 'Building failed.',
+      );
+    }
+  }
+
+  async function submitEvidence(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setUploadMessage('Uploading privately…');
+    const form = event.currentTarget;
+    const file = new FormData(form).get('file');
+    if (!(file instanceof File) || file.size === 0) {
+      setUploadMessage('Choose a file.');
+      return;
+    }
+    try {
+      await uploadEvidence(file);
+      setEvidence(await fetchMyEvidence());
+      setUploadMessage('Uploaded privately and queued for moderation.');
+      form.reset();
+    } catch (error) {
+      setUploadMessage(
+        error instanceof Error ? error.message : 'Upload failed.',
       );
     }
   }
@@ -609,6 +639,40 @@ function App() {
             </div>
           </section>
         )}
+      {session.authenticated && (
+        <section className="claim-panel" aria-labelledby="evidence-title">
+          <div>
+            <p className="kicker">Private evidence vault</p>
+            <h2 id="evidence-title">Upload photo or video</h2>
+            <p>
+              Originals stay private. Public use requires a separate moderation
+              decision.
+            </p>
+          </div>
+          <form onSubmit={submitEvidence}>
+            <input
+              name="file"
+              type="file"
+              accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"
+              required
+            />
+            <button type="submit">Upload privately</button>
+            {uploadMessage && <p role="status">{uploadMessage}</p>}
+          </form>
+          <div className="claim-list">
+            {evidence.map((item) => (
+              <article key={item.id}>
+                <span>{item.moderationStatus}</span>
+                <strong>{item.originalName}</strong>
+                <p>
+                  {(item.byteSize / 1024).toFixed(1)} KB · {item.mediaType}
+                </p>
+                <a href={`/api/evidence/${item.id}/file`}>Download original</a>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
       <main id="top">
         <section className="hero" aria-labelledby="hero-title">
           <img
