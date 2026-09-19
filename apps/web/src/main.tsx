@@ -41,6 +41,13 @@ import {
   saveRepairPlan,
   requestReinspection,
   decideRepair,
+  fetchCredentials,
+  submitCredential,
+  decideCredential,
+  assignInspection,
+  fetchInspections,
+  declareInspectionConflict,
+  submitInspectionResult,
   loginDemoAccount,
   logoutDemoAccount,
   registerDemoAccount,
@@ -55,6 +62,8 @@ import {
   type PublicPropertyProfile,
   type RepairCase,
   type EligibleRepairReport,
+  type Credential,
+  type InspectionAssignment,
 } from './api';
 import './styles.css';
 
@@ -130,6 +139,10 @@ function App() {
   >([]);
   const [reviewRepairs, setReviewRepairs] = useState<RepairCase[]>([]);
   const [repairMessage, setRepairMessage] = useState('');
+  const [credentials, setCredentials] = useState<Credential[]>([]);
+  const [reviewCredentials, setReviewCredentials] = useState<Credential[]>([]);
+  const [inspections, setInspections] = useState<InspectionAssignment[]>([]);
+  const [inspectionMessage, setInspectionMessage] = useState('');
   const [query, setQuery] = useState('');
   const [message, setMessage] = useState(
     'Search is a visual preview. No live properties are indexed.',
@@ -186,6 +199,11 @@ function App() {
       void fetchReviewerEvidence().then(setReviewEvidence);
       void fetchReviewerReports().then(setReviewReports);
       void fetchReviewerRepairs().then(setReviewRepairs);
+      void fetchCredentials(true).then(setReviewCredentials);
+    }
+    if (session.authenticated && session.profile?.role === 'professional') {
+      void fetchCredentials().then(setCredentials);
+      void fetchInspections().then(setInspections);
     }
   }, [session]);
 
@@ -541,6 +559,91 @@ function App() {
     } catch (error) {
       setRepairMessage(
         error instanceof Error ? error.message : 'Decision failed.',
+      );
+    }
+  }
+
+  async function submitProfessionalCredential(
+    event: FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    try {
+      await submitCredential({
+        credentialType: String(data.get('credentialType')),
+        licenseNumber: String(data.get('licenseNumber')),
+        specialty: String(data.get('specialty')),
+        expiresOn: String(data.get('expiresOn')),
+      });
+      setCredentials(await fetchCredentials());
+      setInspectionMessage('Credential submitted for review.');
+      form.reset();
+    } catch (error) {
+      setInspectionMessage(
+        error instanceof Error ? error.message : 'Submission failed.',
+      );
+    }
+  }
+
+  async function reviewCredential(id: string, status: 'approved' | 'rejected') {
+    const reason = window.prompt(`Credential ${status} reason:`);
+    if (!reason) return;
+    await decideCredential(id, status, reason);
+    setReviewCredentials(await fetchCredentials(true));
+  }
+
+  async function createInspectionAssignment(credential: Credential) {
+    const reportId = window.prompt('Approved report ID:');
+    const scheduledFor = window.prompt(
+      'Schedule (ISO date-time):',
+      new Date().toISOString(),
+    );
+    if (!reportId || !scheduledFor) return;
+    try {
+      await assignInspection({
+        reportId,
+        professionalUserId: credential.userId,
+        specialty: credential.specialty,
+        scheduledFor,
+      });
+      setInspectionMessage('Inspection assigned.');
+    } catch (error) {
+      setInspectionMessage(
+        error instanceof Error ? error.message : 'Assignment failed.',
+      );
+    }
+  }
+
+  async function acceptInspection(
+    assignment: InspectionAssignment,
+    conflict: boolean,
+  ) {
+    const note = window.prompt(
+      conflict ? 'Describe the conflict:' : 'Confirm independence:',
+    );
+    if (!note) return;
+    await declareInspectionConflict(assignment.id, conflict, note);
+    setInspections(await fetchInspections());
+  }
+
+  async function completeInspection(assignment: InspectionAssignment) {
+    const outcome = window.prompt(
+      'Outcome: compliant, non_compliant or inconclusive',
+    );
+    const notes = window.prompt('Inspection observations:');
+    if (!outcome || !notes) return;
+    try {
+      await submitInspectionResult(
+        assignment.id,
+        outcome,
+        notes,
+        new Date().toISOString(),
+      );
+      setInspections(await fetchInspections());
+    } catch (error) {
+      setInspectionMessage(
+        error instanceof Error ? error.message : 'Result failed.',
       );
     }
   }
@@ -1166,6 +1269,133 @@ function App() {
           </div>
         </section>
       )}
+      {session.authenticated && session.profile?.role === 'professional' && (
+        <section className="claim-panel" aria-labelledby="credential-title">
+          <div>
+            <p className="kicker">Professional verification</p>
+            <h2 id="credential-title">Credentials and inspections</h2>
+          </div>
+          <form onSubmit={submitProfessionalCredential}>
+            <input
+              name="credentialType"
+              required
+              placeholder="Credential type"
+            />
+            <input name="licenseNumber" required placeholder="License number" />
+            <select name="specialty" required defaultValue="fire_safety">
+              {[
+                'fire_safety',
+                'electrical',
+                'structural',
+                'water_ingress',
+                'blocked_access',
+                'overcrowding',
+                'sanitation',
+                'other_safety',
+              ].map((specialty) => (
+                <option key={specialty} value={specialty}>
+                  {specialty.replaceAll('_', ' ')}
+                </option>
+              ))}
+            </select>
+            <input name="expiresOn" type="date" required />
+            <button type="submit">Submit credential</button>
+          </form>
+          <div className="claim-list">
+            {credentials.map((credential) => (
+              <article key={credential.id}>
+                <span>{credential.status}</span>
+                <strong>{credential.credentialType}</strong>
+                <p>
+                  {credential.specialty.replaceAll('_', ' ')} · expires{' '}
+                  {credential.expiresOn}
+                </p>
+              </article>
+            ))}
+            {inspections.map((inspection) => (
+              <article key={inspection.id}>
+                <span>{inspection.status}</span>
+                <strong>{inspection.reportTitle}</strong>
+                <p>{new Date(inspection.scheduledFor).toLocaleString()}</p>
+                {inspection.status === 'assigned' && (
+                  <div className="decision-actions">
+                    <button
+                      onClick={() => void acceptInspection(inspection, false)}
+                    >
+                      Accept · no conflict
+                    </button>
+                    <button
+                      onClick={() => void acceptInspection(inspection, true)}
+                    >
+                      Declare conflict
+                    </button>
+                  </div>
+                )}
+                {inspection.status === 'accepted' && (
+                  <button onClick={() => void completeInspection(inspection)}>
+                    Submit inspection result
+                  </button>
+                )}
+              </article>
+            ))}
+          </div>
+          {inspectionMessage && <p role="status">{inspectionMessage}</p>}
+        </section>
+      )}
+      {session.authenticated &&
+        session.user.email === 'reviewer@suraksha.demo' && (
+          <section
+            className="claim-panel"
+            aria-labelledby="credential-review-title"
+          >
+            <div>
+              <p className="kicker">Credential review</p>
+              <h2 id="credential-review-title">Professional approvals</h2>
+            </div>
+            <div className="claim-list">
+              {reviewCredentials.map((credential) => (
+                <article key={credential.id}>
+                  <span>{credential.status}</span>
+                  <strong>
+                    {credential.displayName} ·{' '}
+                    {credential.specialty.replaceAll('_', ' ')}
+                  </strong>
+                  <p>
+                    {credential.licenseNumber} · expires {credential.expiresOn}
+                  </p>
+                  {credential.status === 'submitted' ? (
+                    <div className="decision-actions">
+                      <button
+                        onClick={() =>
+                          void reviewCredential(credential.id, 'approved')
+                        }
+                      >
+                        Approve
+                      </button>
+                      <button
+                        onClick={() =>
+                          void reviewCredential(credential.id, 'rejected')
+                        }
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  ) : (
+                    credential.status === 'approved' && (
+                      <button
+                        onClick={() =>
+                          void createInspectionAssignment(credential)
+                        }
+                      >
+                        Assign matching report
+                      </button>
+                    )
+                  )}
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
       <main id="top">
         <section className="hero" aria-labelledby="hero-title">
           <img

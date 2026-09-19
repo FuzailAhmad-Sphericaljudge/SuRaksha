@@ -135,6 +135,8 @@ Build credential submission/review, specialty and expiry enforcement, assignment
 
 Done when expired, conflicted or out-of-scope professionals cannot certify findings.
 
+Status: complete — professionals submit specialty-scoped credentials with license numbers and expiry dates for reviewer approval. Reviewers can assign a matching approved professional to a dated inspection. Professionals must declare independence before submitting a structured outcome, and expired, conflicted or out-of-scope credentials are rejected server-side.
+
 ## Phase 15 — Notifications
 
 Add in-app notifications first, then opted-in email/SMS for claim decisions, report updates, inspection schedules and overdue actions.

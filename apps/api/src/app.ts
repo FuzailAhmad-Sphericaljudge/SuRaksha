@@ -23,6 +23,7 @@ import {
   EvidenceUploadRepository,
   IssueReportRepository,
   RepairRepository,
+  InspectionRepository,
   PropertyCandidateRepository,
 } from './database.js';
 import {
@@ -175,6 +176,36 @@ export function createApp(options: AppOptions = {}) {
   const repairDecisionSchema = z.strictObject({
     status: z.enum(['resolved', 'changes_requested']),
     reason: z.string().trim().min(10).max(1000),
+  });
+  const credentialSchema = z.strictObject({
+    credentialType: z.string().trim().min(3).max(120),
+    licenseNumber: z.string().trim().min(3).max(120),
+    specialty: z.enum([
+      'fire_safety',
+      'electrical',
+      'structural',
+      'water_ingress',
+      'blocked_access',
+      'overcrowding',
+      'sanitation',
+      'other_safety',
+    ]),
+    expiresOn: z.iso.date(),
+  });
+  const assignmentSchema = z.strictObject({
+    reportId: z.uuid(),
+    professionalUserId: z.uuid(),
+    specialty: z.string().trim().min(3).max(80),
+    scheduledFor: z.iso.datetime(),
+  });
+  const conflictSchema = z.strictObject({
+    conflict: z.boolean(),
+    note: z.string().trim().min(10).max(1000),
+  });
+  const inspectionResultSchema = z.strictObject({
+    outcome: z.enum(['compliant', 'non_compliant', 'inconclusive']),
+    notes: z.string().trim().min(20).max(4000),
+    inspectedAt: z.iso.datetime(),
   });
   app.register(fastifyMultipart, {
     limits: { files: 1, fileSize: 50_000_000, fields: 4 },
@@ -1056,6 +1087,259 @@ export function createApp(options: AppOptions = {}) {
           },
         });
   });
+
+  app.get('/api/professional/credentials', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user)
+      return reply.code(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Sign-in is required.',
+          requestId: request.id,
+        },
+      });
+    return database
+      ? new InspectionRepository(database).credentials(user.id)
+      : [];
+  });
+
+  app.post('/api/professional/credentials', async (request, reply) => {
+    const user = currentUser(request.headers);
+    const parsed = credentialSchema.safeParse(request.body);
+    const profile =
+      user && database
+        ? new AccountProfileRepository(database).get(user.id)
+        : null;
+    if (!user)
+      return reply.code(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Sign-in is required.',
+          requestId: request.id,
+        },
+      });
+    if (!database || !parsed.success || profile?.role !== 'professional')
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message:
+            'Professional onboarding and valid credential details are required.',
+          requestId: request.id,
+        },
+      });
+    if (parsed.data.expiresOn < now().toISOString().slice(0, 10))
+      return reply.code(400).send({
+        error: {
+          code: 'EXPIRED',
+          message: 'Expired credentials cannot be submitted.',
+          requestId: request.id,
+        },
+      });
+    try {
+      const record = {
+        id: randomUUID(),
+        userId: user.id,
+        ...parsed.data,
+        status: 'submitted' as const,
+        createdAt: now().toISOString(),
+      };
+      new InspectionRepository(database).saveCredential(record);
+      return reply.code(201).send(record);
+    } catch {
+      return reply.code(409).send({
+        error: {
+          code: 'CONFLICT',
+          message: 'This license is already registered.',
+          requestId: request.id,
+        },
+      });
+    }
+  });
+
+  app.get('/api/reviewer/credentials', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user || !isDemoReviewer(user.email))
+      return reply.code(403).send({
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Reviewer access is required.',
+          requestId: request.id,
+        },
+      });
+    return database ? new InspectionRepository(database).credentials() : [];
+  });
+
+  app.post('/api/reviewer/credentials/:id/decision', async (request, reply) => {
+    const user = currentUser(request.headers);
+    const identifier = z
+      .uuid()
+      .safeParse((request.params as { id?: unknown }).id);
+    const decision = claimDecisionSchema.safeParse(request.body);
+    if (!user || !isDemoReviewer(user.email))
+      return reply.code(403).send({
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Reviewer access is required.',
+          requestId: request.id,
+        },
+      });
+    if (!database || !identifier.success || !decision.success)
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'A valid credential decision is required.',
+          requestId: request.id,
+        },
+      });
+    return new InspectionRepository(database).decideCredential(
+      identifier.data,
+      decision.data.status,
+      decision.data.reason,
+    )
+      ? { status: decision.data.status }
+      : reply.code(409).send({
+          error: {
+            code: 'CONFLICT',
+            message: 'Credential is not awaiting review.',
+            requestId: request.id,
+          },
+        });
+  });
+
+  app.post('/api/reviewer/inspections', async (request, reply) => {
+    const user = currentUser(request.headers);
+    const parsed = assignmentSchema.safeParse(request.body);
+    if (!user || !isDemoReviewer(user.email))
+      return reply.code(403).send({
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Reviewer access is required.',
+          requestId: request.id,
+        },
+      });
+    if (!database || !parsed.success)
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Valid assignment details are required.',
+          requestId: request.id,
+        },
+      });
+    const record = {
+      id: randomUUID(),
+      ...parsed.data,
+      createdAt: now().toISOString(),
+    };
+    return new InspectionRepository(database).assign(record)
+      ? reply.code(201).send(record)
+      : reply.code(409).send({
+          error: {
+            code: 'CONFLICT',
+            message:
+              'Professional must have a current approved credential matching the report category.',
+            requestId: request.id,
+          },
+        });
+  });
+
+  app.get('/api/professional/inspections', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user)
+      return reply.code(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Sign-in is required.',
+          requestId: request.id,
+        },
+      });
+    return database
+      ? new InspectionRepository(database).assignments(user.id)
+      : [];
+  });
+
+  app.post(
+    '/api/professional/inspections/:id/conflict',
+    async (request, reply) => {
+      const user = currentUser(request.headers);
+      const identifier = z
+        .uuid()
+        .safeParse((request.params as { id?: unknown }).id);
+      const parsed = conflictSchema.safeParse(request.body);
+      if (!user)
+        return reply.code(401).send({
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'Sign-in is required.',
+            requestId: request.id,
+          },
+        });
+      if (!database || !identifier.success || !parsed.success)
+        return reply.code(400).send({
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'A conflict declaration is required.',
+            requestId: request.id,
+          },
+        });
+      return new InspectionRepository(database).declareConflict(
+        identifier.data,
+        user.id,
+        parsed.data.conflict,
+        parsed.data.note,
+      )
+        ? { status: parsed.data.conflict ? 'conflicted' : 'accepted' }
+        : reply.code(409).send({
+            error: {
+              code: 'CONFLICT',
+              message: 'Assignment cannot be accepted.',
+              requestId: request.id,
+            },
+          });
+    },
+  );
+
+  app.post(
+    '/api/professional/inspections/:id/result',
+    async (request, reply) => {
+      const user = currentUser(request.headers);
+      const identifier = z
+        .uuid()
+        .safeParse((request.params as { id?: unknown }).id);
+      const parsed = inspectionResultSchema.safeParse(request.body);
+      if (!user)
+        return reply.code(401).send({
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'Sign-in is required.',
+            requestId: request.id,
+          },
+        });
+      if (!database || !identifier.success || !parsed.success)
+        return reply.code(400).send({
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'A valid inspection result is required.',
+            requestId: request.id,
+          },
+        });
+      return new InspectionRepository(database).submitResult({
+        id: randomUUID(),
+        assignmentId: identifier.data,
+        userId: user.id,
+        ...parsed.data,
+        createdAt: now().toISOString(),
+      })
+        ? reply.code(201).send({ status: 'completed' })
+        : reply.code(409).send({
+            error: {
+              code: 'CONFLICT',
+              message:
+                'Accepted, conflict-free assignment and current matching credential required.',
+              requestId: request.id,
+            },
+          });
+    },
+  );
 
   app.post('/api/buildings', async (request, reply) => {
     const user = currentUser(request.headers);

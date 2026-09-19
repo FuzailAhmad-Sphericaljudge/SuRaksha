@@ -102,6 +102,26 @@ export function openDatabase(path: string) {
     );
     INSERT OR IGNORE INTO schema_migrations(version, applied_at)
       VALUES (10, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    CREATE TABLE IF NOT EXISTS professional_credentials (
+      id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id),
+      credential_type TEXT NOT NULL, license_number TEXT NOT NULL,
+      specialty TEXT NOT NULL, expires_on TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'submitted', review_reason TEXT,
+      created_at TEXT NOT NULL, UNIQUE(user_id, license_number)
+    );
+    CREATE TABLE IF NOT EXISTS inspection_assignments (
+      id TEXT PRIMARY KEY, report_id TEXT NOT NULL REFERENCES issue_reports(id),
+      professional_user_id TEXT NOT NULL REFERENCES users(id), specialty TEXT NOT NULL,
+      scheduled_for TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'assigned',
+      conflict_declared INTEGER, conflict_note TEXT, created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS inspection_results (
+      id TEXT PRIMARY KEY, assignment_id TEXT NOT NULL UNIQUE REFERENCES inspection_assignments(id),
+      outcome TEXT NOT NULL, notes TEXT NOT NULL, inspected_at TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    INSERT OR IGNORE INTO schema_migrations(version, applied_at)
+      VALUES (11, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
   `);
   const candidateColumns = database
     .prepare('PRAGMA table_info(property_candidates)')
@@ -869,5 +889,195 @@ export class RepairRepository {
         'INSERT INTO repair_events(id, report_id, actor_type, event_type, note, created_at) VALUES (?, ?, ?, ?, ?, ?)',
       )
       .run(id, reportId, actor, event, note, createdAt);
+  }
+}
+
+export type CredentialRecord = {
+  id: string;
+  userId: string;
+  displayName?: string;
+  credentialType: string;
+  licenseNumber: string;
+  specialty: string;
+  expiresOn: string;
+  status: 'submitted' | 'approved' | 'rejected';
+  reviewReason: string | null;
+  createdAt: string;
+};
+
+export class InspectionRepository {
+  constructor(private readonly database: DatabaseSync) {}
+  saveCredential(
+    record: Omit<CredentialRecord, 'displayName' | 'reviewReason'>,
+  ) {
+    this.database
+      .prepare(
+        `INSERT INTO professional_credentials(id,user_id,credential_type,license_number,specialty,expires_on,status,created_at)
+      VALUES (?,?,?,?,?,?,?,?)`,
+      )
+      .run(
+        record.id,
+        record.userId,
+        record.credentialType,
+        record.licenseNumber,
+        record.specialty,
+        record.expiresOn,
+        record.status,
+        record.createdAt,
+      );
+  }
+  credentials(userId?: string): CredentialRecord[] {
+    return this.database
+      .prepare(
+        `SELECT professional_credentials.id, user_id AS userId, users.display_name AS displayName,
+      credential_type AS credentialType, license_number AS licenseNumber, specialty,
+      expires_on AS expiresOn, status, review_reason AS reviewReason,
+      professional_credentials.created_at AS createdAt
+      FROM professional_credentials JOIN users ON users.id = professional_credentials.user_id
+      WHERE (? IS NULL OR user_id = ?) ORDER BY professional_credentials.created_at DESC`,
+      )
+      .all(userId ?? null, userId ?? null) as CredentialRecord[];
+  }
+  decideCredential(
+    id: string,
+    status: 'approved' | 'rejected',
+    reason: string,
+  ): boolean {
+    const credential = this.database
+      .prepare(
+        "SELECT user_id AS userId FROM professional_credentials WHERE id = ? AND status = 'submitted'",
+      )
+      .get(id) as { userId: string } | undefined;
+    if (!credential) return false;
+    this.database
+      .prepare(
+        "UPDATE professional_credentials SET status = ?, review_reason = ? WHERE id = ? AND status = 'submitted'",
+      )
+      .run(status, reason, id);
+    if (status === 'approved')
+      this.database
+        .prepare(
+          "UPDATE account_profiles SET review_status = 'active' WHERE user_id = ? AND role = 'professional'",
+        )
+        .run(credential.userId);
+    return true;
+  }
+  assign(input: {
+    id: string;
+    reportId: string;
+    professionalUserId: string;
+    specialty: string;
+    scheduledFor: string;
+    createdAt: string;
+  }): boolean {
+    const report = this.database
+      .prepare(
+        "SELECT category FROM issue_reports WHERE id = ? AND status IN ('approved','resolved')",
+      )
+      .get(input.reportId) as { category: string } | undefined;
+    const credential = this.database
+      .prepare(
+        "SELECT 1 FROM professional_credentials WHERE user_id = ? AND specialty = ? AND status = 'approved' AND expires_on >= substr(?,1,10)",
+      )
+      .get(input.professionalUserId, input.specialty, input.scheduledFor);
+    if (!report || report.category !== input.specialty || !credential)
+      return false;
+    this.database
+      .prepare(
+        `INSERT INTO inspection_assignments(id,report_id,professional_user_id,specialty,scheduled_for,status,created_at)
+      VALUES (?,?,?,?,?,'assigned',?)`,
+      )
+      .run(
+        input.id,
+        input.reportId,
+        input.professionalUserId,
+        input.specialty,
+        input.scheduledFor,
+        input.createdAt,
+      );
+    return true;
+  }
+  assignments(userId?: string) {
+    return this.database
+      .prepare(
+        `SELECT inspection_assignments.id, report_id AS reportId, issue_reports.title AS reportTitle,
+      professional_user_id AS professionalUserId, users.display_name AS professionalName,
+      inspection_assignments.specialty, scheduled_for AS scheduledFor,
+      inspection_assignments.status, conflict_declared AS conflictDeclared,
+      conflict_note AS conflictNote, inspection_assignments.created_at AS createdAt
+      FROM inspection_assignments JOIN issue_reports ON issue_reports.id = inspection_assignments.report_id
+      JOIN users ON users.id = inspection_assignments.professional_user_id
+      WHERE (? IS NULL OR professional_user_id = ?) ORDER BY scheduled_for ASC`,
+      )
+      .all(userId ?? null, userId ?? null);
+  }
+  declareConflict(
+    id: string,
+    userId: string,
+    conflict: boolean,
+    note: string,
+  ): boolean {
+    return (
+      this.database
+        .prepare(
+          "UPDATE inspection_assignments SET conflict_declared = ?, conflict_note = ?, status = ? WHERE id = ? AND professional_user_id = ? AND status = 'assigned'",
+        )
+        .run(
+          conflict ? 1 : 0,
+          note,
+          conflict ? 'conflicted' : 'accepted',
+          id,
+          userId,
+        ).changes === 1
+    );
+  }
+  submitResult(input: {
+    id: string;
+    assignmentId: string;
+    userId: string;
+    outcome: string;
+    notes: string;
+    inspectedAt: string;
+    createdAt: string;
+  }): boolean {
+    const assignment = this.database
+      .prepare(
+        `SELECT specialty, scheduled_for AS scheduledFor FROM inspection_assignments
+      WHERE id = ? AND professional_user_id = ? AND status = 'accepted' AND conflict_declared = 0`,
+      )
+      .get(input.assignmentId, input.userId) as
+      { specialty: string; scheduledFor: string } | undefined;
+    if (!assignment) return false;
+    const validCredential = this.database
+      .prepare(
+        "SELECT 1 FROM professional_credentials WHERE user_id = ? AND specialty = ? AND status = 'approved' AND expires_on >= substr(?,1,10)",
+      )
+      .get(input.userId, assignment.specialty, input.inspectedAt);
+    if (!validCredential) return false;
+    this.database.exec('BEGIN');
+    try {
+      this.database
+        .prepare(
+          'INSERT INTO inspection_results(id,assignment_id,outcome,notes,inspected_at,created_at) VALUES (?,?,?,?,?,?)',
+        )
+        .run(
+          input.id,
+          input.assignmentId,
+          input.outcome,
+          input.notes,
+          input.inspectedAt,
+          input.createdAt,
+        );
+      this.database
+        .prepare(
+          "UPDATE inspection_assignments SET status = 'completed' WHERE id = ?",
+        )
+        .run(input.assignmentId);
+      this.database.exec('COMMIT');
+      return true;
+    } catch {
+      this.database.exec('ROLLBACK');
+      return false;
+    }
   }
 }

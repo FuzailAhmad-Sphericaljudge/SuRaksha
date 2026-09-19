@@ -518,3 +518,92 @@ export async function decideRepair(
     reason,
   });
 }
+
+export type Credential = {
+  id: string;
+  userId: string;
+  displayName?: string;
+  credentialType: string;
+  licenseNumber: string;
+  specialty: string;
+  expiresOn: string;
+  status: 'submitted' | 'approved' | 'rejected';
+  reviewReason: string | null;
+};
+export type InspectionAssignment = {
+  id: string;
+  reportId: string;
+  reportTitle: string;
+  professionalUserId: string;
+  professionalName: string;
+  specialty: string;
+  scheduledFor: string;
+  status: string;
+  conflictDeclared: number | null;
+};
+export async function fetchCredentials(
+  reviewer = false,
+): Promise<Credential[]> {
+  const response = await fetch(
+    reviewer ? '/api/reviewer/credentials' : '/api/professional/credentials',
+    { credentials: 'same-origin', cache: 'no-store' },
+  );
+  if (!response.ok) throw new Error('Credentials unavailable.');
+  return (await response.json()) as Credential[];
+}
+export async function submitCredential(input: {
+  credentialType: string;
+  licenseNumber: string;
+  specialty: string;
+  expiresOn: string;
+}) {
+  return jsonRequest('/api/professional/credentials', 'POST', input);
+}
+export async function decideCredential(
+  id: string,
+  status: 'approved' | 'rejected',
+  reason: string,
+) {
+  return jsonRequest(`/api/reviewer/credentials/${id}/decision`, 'POST', {
+    status,
+    reason,
+  });
+}
+export async function assignInspection(input: {
+  reportId: string;
+  professionalUserId: string;
+  specialty: string;
+  scheduledFor: string;
+}) {
+  return jsonRequest('/api/reviewer/inspections', 'POST', input);
+}
+export async function fetchInspections(): Promise<InspectionAssignment[]> {
+  const response = await fetch('/api/professional/inspections', {
+    credentials: 'same-origin',
+    cache: 'no-store',
+  });
+  if (!response.ok) throw new Error('Inspections unavailable.');
+  return (await response.json()) as InspectionAssignment[];
+}
+export async function declareInspectionConflict(
+  id: string,
+  conflict: boolean,
+  note: string,
+) {
+  return jsonRequest(`/api/professional/inspections/${id}/conflict`, 'POST', {
+    conflict,
+    note,
+  });
+}
+export async function submitInspectionResult(
+  id: string,
+  outcome: string,
+  notes: string,
+  inspectedAt: string,
+) {
+  return jsonRequest(`/api/professional/inspections/${id}/result`, 'POST', {
+    outcome,
+    notes,
+    inspectedAt,
+  });
+}

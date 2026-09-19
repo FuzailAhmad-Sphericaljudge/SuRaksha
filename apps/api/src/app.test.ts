@@ -642,6 +642,177 @@ describe('API foundation', () => {
     database.close();
   });
 
+  it('enforces credential specialty, expiry and conflict checks for inspections', async () => {
+    const database = openDatabase(':memory:');
+    const app = createApp({
+      mode: 'demo',
+      database,
+      now: () => new Date('2026-09-20T10:00:00Z'),
+    });
+    apps.push(app);
+    const professional = await app.inject({
+      method: 'POST',
+      url: '/api/auth/register',
+      payload: {
+        displayName: 'Fire Inspector',
+        email: 'inspector@test.local',
+        password: 'safe-password',
+      },
+    });
+    const professionalCookie = professional.headers['set-cookie'];
+    const professionalId = professional.json().user.id;
+    await app.inject({
+      method: 'POST',
+      url: '/api/onboarding',
+      headers: { cookie: professionalCookie },
+      payload: { role: 'professional' },
+    });
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/professional/credentials',
+          headers: { cookie: professionalCookie },
+          payload: {
+            credentialType: 'Fire safety license',
+            licenseNumber: 'FIRE-2026-01',
+            specialty: 'fire_safety',
+            expiresOn: '2026-09-19',
+          },
+        })
+      ).statusCode,
+    ).toBe(400);
+    const credential = await app.inject({
+      method: 'POST',
+      url: '/api/professional/credentials',
+      headers: { cookie: professionalCookie },
+      payload: {
+        credentialType: 'Fire safety license',
+        licenseNumber: 'FIRE-2026-02',
+        specialty: 'fire_safety',
+        expiresOn: '2027-09-20',
+      },
+    });
+    expect(credential.statusCode).toBe(201);
+    const reviewer = await app.inject({
+      method: 'POST',
+      url: '/api/auth/register',
+      payload: {
+        displayName: 'Credential Reviewer',
+        email: 'reviewer@suraksha.demo',
+        password: 'review-password',
+      },
+    });
+    const reviewerCookie = reviewer.headers['set-cookie'];
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: `/api/reviewer/credentials/${credential.json().id}/decision`,
+          headers: { cookie: reviewerCookie },
+          payload: {
+            status: 'approved',
+            reason: 'License number and expiry verified for demo.',
+          },
+        })
+      ).statusCode,
+    ).toBe(200);
+    const candidateId = '40000000-0000-4000-8000-000000000001';
+    const reportId = '40000000-0000-4000-8000-000000000002';
+    database
+      .prepare(
+        'INSERT INTO property_candidates(id,name,locality,source,created_at,property_type) VALUES (?,?,?,?,?,?)',
+      )
+      .run(
+        candidateId,
+        'Inspection Hostel',
+        'Kota',
+        'test',
+        '2026-09-20T00:00:00Z',
+        'hostel',
+      );
+    database
+      .prepare(
+        'INSERT INTO issue_reports(id,candidate_id,building_id,reporter_user_id,category,title,description,visibility,status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
+      )
+      .run(
+        reportId,
+        candidateId,
+        null,
+        professionalId,
+        'fire_safety',
+        'Fire door check',
+        'Professional inspection is needed for the fire door.',
+        'public_redacted',
+        'approved',
+        '2026-09-20T00:00:00Z',
+      );
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/reviewer/inspections',
+          headers: { cookie: reviewerCookie },
+          payload: {
+            reportId,
+            professionalUserId: professionalId,
+            specialty: 'electrical',
+            scheduledFor: '2026-09-25T10:00:00Z',
+          },
+        })
+      ).statusCode,
+    ).toBe(409);
+    const assignment = await app.inject({
+      method: 'POST',
+      url: '/api/reviewer/inspections',
+      headers: { cookie: reviewerCookie },
+      payload: {
+        reportId,
+        professionalUserId: professionalId,
+        specialty: 'fire_safety',
+        scheduledFor: '2026-09-25T10:00:00Z',
+      },
+    });
+    expect(assignment.statusCode).toBe(201);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: `/api/professional/inspections/${assignment.json().id}/conflict`,
+          headers: { cookie: professionalCookie },
+          payload: {
+            conflict: false,
+            note: 'No financial or management relationship exists.',
+          },
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: `/api/professional/inspections/${assignment.json().id}/result`,
+          headers: { cookie: professionalCookie },
+          payload: {
+            outcome: 'non_compliant',
+            notes:
+              'Fire door does not close automatically and requires adjustment.',
+            inspectedAt: '2026-09-25T11:00:00Z',
+          },
+        })
+      ).statusCode,
+    ).toBe(201);
+    expect(
+      (
+        await app.inject({
+          url: '/api/professional/inspections',
+          headers: { cookie: professionalCookie },
+        })
+      ).json()[0].status,
+    ).toBe('completed');
+    database.close();
+  });
+
   it('rejects duplicate registration and incorrect passwords', async () => {
     const database = openDatabase(':memory:');
     const app = createApp({ mode: 'demo', database });
