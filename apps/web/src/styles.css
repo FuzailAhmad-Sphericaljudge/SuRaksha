@@ -261,6 +261,20 @@ select {
 .public-findings small {
   color: #647178;
 }
+.repair-history {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #cad4d0;
+}
+.repair-history p,
+.repair-history ol {
+  margin: 0.5rem 0;
+}
+.repair-history li {
+  margin-top: 0.3rem;
+  color: #56666b;
+  text-transform: capitalize;
+}
 .profile-limitations {
   margin-top: 1rem;
   padding: 1.2rem;

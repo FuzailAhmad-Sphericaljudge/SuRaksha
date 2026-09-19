@@ -85,6 +85,23 @@ export function openDatabase(path: string) {
     );
     INSERT OR IGNORE INTO schema_migrations(version, applied_at)
       VALUES (8, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    CREATE TABLE IF NOT EXISTS issue_repairs (
+      report_id TEXT PRIMARY KEY REFERENCES issue_reports(id) ON DELETE CASCADE,
+      owner_user_id TEXT NOT NULL REFERENCES users(id), action_plan TEXT NOT NULL,
+      target_date TEXT NOT NULL, status TEXT NOT NULL,
+      reviewer_reason TEXT, updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS repair_evidence (
+      report_id TEXT NOT NULL REFERENCES issue_repairs(report_id) ON DELETE CASCADE,
+      evidence_id TEXT NOT NULL REFERENCES evidence_uploads(id),
+      PRIMARY KEY(report_id, evidence_id)
+    );
+    CREATE TABLE IF NOT EXISTS repair_events (
+      id TEXT PRIMARY KEY, report_id TEXT NOT NULL REFERENCES issue_reports(id) ON DELETE CASCADE,
+      actor_type TEXT NOT NULL, event_type TEXT NOT NULL, note TEXT NOT NULL, created_at TEXT NOT NULL
+    );
+    INSERT OR IGNORE INTO schema_migrations(version, applied_at)
+      VALUES (10, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
   `);
   const candidateColumns = database
     .prepare('PRAGMA table_info(property_candidates)')
@@ -434,7 +451,7 @@ export type IssueReportRecord = {
   title: string;
   description: string;
   visibility: 'private_review' | 'public_redacted' | 'confidential';
-  status: 'submitted' | 'approved' | 'rejected' | 'merged';
+  status: 'submitted' | 'approved' | 'rejected' | 'merged' | 'resolved';
   createdAt: string;
   evidenceIds: string[];
   mergedIntoReportId?: string | null;
@@ -574,6 +591,7 @@ export class IssueReportRepository {
       .prepare(
         `SELECT issue_reports.id, issue_reports.building_id AS buildingId,
         managed_buildings.name AS buildingName, category, title, description,
+        issue_reports.status AS reportStatus,
         issue_reports.created_at AS createdAt,
         COUNT(DISTINCT evidence_uploads.id) AS approvedEvidenceCount
         FROM issue_reports
@@ -583,10 +601,11 @@ export class IssueReportRepository {
           AND evidence_uploads.moderation_status = 'approved'
         WHERE issue_reports.candidate_id = ?
           AND issue_reports.visibility = 'public_redacted'
-          AND issue_reports.status = 'approved'
+          AND issue_reports.status IN ('approved', 'resolved')
           AND issue_reports.merged_into_report_id IS NULL
         GROUP BY issue_reports.id
-        ORDER BY CASE category
+        ORDER BY CASE issue_reports.status WHEN 'approved' THEN 0 ELSE 1 END,
+          CASE category
           WHEN 'fire_safety' THEN 1 WHEN 'structural' THEN 2
           WHEN 'electrical' THEN 3 WHEN 'blocked_access' THEN 4
           WHEN 'overcrowding' THEN 5 ELSE 6 END,
@@ -599,16 +618,39 @@ export class IssueReportRepository {
       category: string;
       title: string;
       description: string;
+      reportStatus: 'approved' | 'resolved';
       createdAt: string;
       approvedEvidenceCount: number;
     }>;
+    const openFindings = findings.filter(
+      (finding) => finding.reportStatus === 'approved',
+    );
     const categories = [
-      ...new Set(findings.map((finding) => finding.category)),
+      ...new Set(openFindings.map((finding) => finding.category)),
     ].map((category) => ({
       category,
-      openFindings: findings.filter((finding) => finding.category === category)
-        .length,
+      openFindings: openFindings.filter(
+        (finding) => finding.category === category,
+      ).length,
     }));
+    const repairStatement = this.database.prepare(
+      `SELECT status, action_plan AS actionPlan, target_date AS targetDate,
+      reviewer_reason AS reviewerReason, updated_at AS updatedAt
+      FROM issue_repairs WHERE report_id = ?`,
+    );
+    const eventStatement = this.database.prepare(
+      `SELECT event_type AS eventType, actor_type AS actorType, note, created_at AS createdAt
+      FROM repair_events WHERE report_id = ? ORDER BY created_at ASC`,
+    );
+    const publicFindings = findings.map((finding) => {
+      const repair = repairStatement.get(finding.id) as object | undefined;
+      return {
+        ...finding,
+        repair: repair
+          ? { ...repair, history: eventStatement.all(finding.id) }
+          : null,
+      };
+    });
     return {
       candidate,
       verification: {
@@ -616,7 +658,7 @@ export class IssueReportRepository {
           findings.length > 0
             ? ('evidence_reviewed' as const)
             : ('unverified' as const),
-        openFindings: findings.length,
+        openFindings: openFindings.length,
         latestReviewedEvidenceAt:
           findings
             .map((finding) => finding.createdAt)
@@ -624,12 +666,208 @@ export class IssueReportRepository {
             .at(-1) ?? null,
       },
       categories,
-      findings,
+      findings: publicFindings,
       limitations: [
         'Only reports marked public by the reporter and supported by approved evidence are shown.',
         'No finding does not mean the property has been inspected or is safe.',
         'Media stays private until a separate public redaction copy is available.',
       ],
     };
+  }
+}
+
+export type RepairRecord = {
+  reportId: string;
+  reportTitle: string;
+  candidateId: string;
+  candidateName: string;
+  ownerUserId: string;
+  actionPlan: string;
+  targetDate: string;
+  status:
+    | 'action_planned'
+    | 'reinspection_requested'
+    | 'resolved'
+    | 'changes_requested';
+  reviewerReason: string | null;
+  updatedAt: string;
+  evidenceIds: string[];
+};
+
+export class RepairRepository {
+  constructor(private readonly database: DatabaseSync) {}
+  ownerCanManage(ownerUserId: string, reportId: string): boolean {
+    return Boolean(
+      this.database
+        .prepare(
+          `SELECT 1 FROM issue_reports
+          JOIN property_claims ON property_claims.candidate_id = issue_reports.candidate_id
+          WHERE issue_reports.id = ? AND issue_reports.status = 'approved'
+            AND property_claims.claimant_user_id = ? AND property_claims.status = 'approved'`,
+        )
+        .get(reportId, ownerUserId),
+    );
+  }
+  listEligible(ownerUserId: string) {
+    return this.database
+      .prepare(
+        `SELECT issue_reports.id, issue_reports.title, issue_reports.category,
+        property_candidates.name AS candidateName
+        FROM issue_reports JOIN property_candidates ON property_candidates.id = issue_reports.candidate_id
+        JOIN property_claims ON property_claims.candidate_id = issue_reports.candidate_id
+        WHERE property_claims.claimant_user_id = ? AND property_claims.status = 'approved'
+          AND issue_reports.status = 'approved'
+        ORDER BY issue_reports.created_at DESC`,
+      )
+      .all(ownerUserId);
+  }
+  savePlan(input: {
+    reportId: string;
+    ownerUserId: string;
+    actionPlan: string;
+    targetDate: string;
+    now: string;
+    eventId: string;
+  }) {
+    this.database
+      .prepare(
+        `INSERT INTO issue_repairs(report_id, owner_user_id, action_plan, target_date, status, updated_at)
+        VALUES (?, ?, ?, ?, 'action_planned', ?)
+        ON CONFLICT(report_id) DO UPDATE SET action_plan = excluded.action_plan,
+        target_date = excluded.target_date, status = 'action_planned', reviewer_reason = NULL,
+        updated_at = excluded.updated_at`,
+      )
+      .run(
+        input.reportId,
+        input.ownerUserId,
+        input.actionPlan,
+        input.targetDate,
+        input.now,
+      );
+    this.addEvent(
+      input.eventId,
+      input.reportId,
+      'owner',
+      'action_plan',
+      input.actionPlan,
+      input.now,
+    );
+  }
+  requestReinspection(input: {
+    reportId: string;
+    ownerUserId: string;
+    evidenceIds: string[];
+    note: string;
+    now: string;
+    eventId: string;
+  }): boolean {
+    const repair = this.database
+      .prepare(
+        'SELECT owner_user_id AS ownerUserId FROM issue_repairs WHERE report_id = ?',
+      )
+      .get(input.reportId) as { ownerUserId: string } | undefined;
+    if (
+      !repair ||
+      repair.ownerUserId !== input.ownerUserId ||
+      input.evidenceIds.length === 0
+    )
+      return false;
+    this.database.exec('BEGIN');
+    try {
+      const insert = this.database.prepare(
+        'INSERT OR IGNORE INTO repair_evidence(report_id, evidence_id) VALUES (?, ?)',
+      );
+      for (const evidenceId of input.evidenceIds)
+        insert.run(input.reportId, evidenceId);
+      this.database
+        .prepare(
+          "UPDATE issue_repairs SET status = 'reinspection_requested', reviewer_reason = NULL, updated_at = ? WHERE report_id = ?",
+        )
+        .run(input.now, input.reportId);
+      this.addEvent(
+        input.eventId,
+        input.reportId,
+        'owner',
+        'reinspection_requested',
+        input.note,
+        input.now,
+      );
+      this.database.exec('COMMIT');
+      return true;
+    } catch {
+      this.database.exec('ROLLBACK');
+      return false;
+    }
+  }
+  list(ownerUserId?: string): RepairRecord[] {
+    const rows = this.database
+      .prepare(
+        `SELECT issue_repairs.report_id AS reportId, issue_reports.title AS reportTitle,
+        issue_reports.candidate_id AS candidateId, property_candidates.name AS candidateName,
+        owner_user_id AS ownerUserId, action_plan AS actionPlan, target_date AS targetDate,
+        issue_repairs.status, reviewer_reason AS reviewerReason, updated_at AS updatedAt
+        FROM issue_repairs JOIN issue_reports ON issue_reports.id = issue_repairs.report_id
+        JOIN property_candidates ON property_candidates.id = issue_reports.candidate_id
+        WHERE (? IS NULL OR owner_user_id = ?) ORDER BY updated_at DESC`,
+      )
+      .all(ownerUserId ?? null, ownerUserId ?? null) as Array<
+      Omit<RepairRecord, 'evidenceIds'>
+    >;
+    const evidence = this.database.prepare(
+      'SELECT evidence_id AS evidenceId FROM repair_evidence WHERE report_id = ?',
+    );
+    return rows.map((row) => ({
+      ...row,
+      evidenceIds: (
+        evidence.all(row.reportId) as Array<{ evidenceId: string }>
+      ).map((item) => item.evidenceId),
+    }));
+  }
+  decide(
+    reportId: string,
+    resolved: boolean,
+    reason: string,
+    now: string,
+    eventId: string,
+  ): boolean {
+    if (
+      resolved &&
+      this.database
+        .prepare(
+          `SELECT 1 FROM repair_evidence JOIN evidence_uploads ON evidence_uploads.id = repair_evidence.evidence_id
+          WHERE repair_evidence.report_id = ? AND evidence_uploads.moderation_status != 'approved' LIMIT 1`,
+        )
+        .get(reportId)
+    )
+      return false;
+    const status = resolved ? 'resolved' : 'changes_requested';
+    const changed = this.database
+      .prepare(
+        "UPDATE issue_repairs SET status = ?, reviewer_reason = ?, updated_at = ? WHERE report_id = ? AND status = 'reinspection_requested'",
+      )
+      .run(status, reason, now, reportId).changes;
+    if (!changed) return false;
+    if (resolved)
+      this.database
+        .prepare(
+          "UPDATE issue_reports SET status = 'resolved' WHERE id = ? AND status = 'approved'",
+        )
+        .run(reportId);
+    this.addEvent(eventId, reportId, 'reviewer', status, reason, now);
+    return true;
+  }
+  private addEvent(
+    id: string,
+    reportId: string,
+    actor: string,
+    event: string,
+    note: string,
+    createdAt: string,
+  ) {
+    this.database
+      .prepare(
+        'INSERT INTO repair_events(id, report_id, actor_type, event_type, note, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      )
+      .run(id, reportId, actor, event, note, createdAt);
   }
 }

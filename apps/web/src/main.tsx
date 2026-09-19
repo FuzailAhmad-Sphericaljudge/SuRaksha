@@ -35,6 +35,12 @@ import {
   decideReport,
   mergeReport,
   unmergeReport,
+  fetchMyRepairs,
+  fetchEligibleRepairs,
+  fetchReviewerRepairs,
+  saveRepairPlan,
+  requestReinspection,
+  decideRepair,
   loginDemoAccount,
   logoutDemoAccount,
   registerDemoAccount,
@@ -47,6 +53,8 @@ import {
   type PublicBuilding,
   type IssueReport,
   type PublicPropertyProfile,
+  type RepairCase,
+  type EligibleRepairReport,
 } from './api';
 import './styles.css';
 
@@ -116,6 +124,12 @@ function App() {
   const [reportMessage, setReportMessage] = useState('');
   const [reviewEvidence, setReviewEvidence] = useState<EvidenceUpload[]>([]);
   const [reviewReports, setReviewReports] = useState<IssueReport[]>([]);
+  const [repairs, setRepairs] = useState<RepairCase[]>([]);
+  const [eligibleRepairs, setEligibleRepairs] = useState<
+    EligibleRepairReport[]
+  >([]);
+  const [reviewRepairs, setReviewRepairs] = useState<RepairCase[]>([]);
+  const [repairMessage, setRepairMessage] = useState('');
   const [query, setQuery] = useState('');
   const [message, setMessage] = useState(
     'Search is a visual preview. No live properties are indexed.',
@@ -159,6 +173,8 @@ function App() {
       void fetchMyBuildings()
         .then(setBuildings)
         .catch(() => setBuildingMessage('Buildings could not be loaded.'));
+      void fetchMyRepairs().then(setRepairs);
+      void fetchEligibleRepairs().then(setEligibleRepairs);
     }
     if (
       session.authenticated &&
@@ -169,6 +185,7 @@ function App() {
         .catch(() => setClaimMessage('Reviewer queue could not be loaded.'));
       void fetchReviewerEvidence().then(setReviewEvidence);
       void fetchReviewerReports().then(setReviewReports);
+      void fetchReviewerRepairs().then(setReviewRepairs);
     }
   }, [session]);
 
@@ -475,6 +492,56 @@ function App() {
       setReportMessage(`Report ${status}.`);
     } catch {
       setReportMessage('Report decision failed.');
+    }
+  }
+
+  async function submitRepairPlan(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    try {
+      await saveRepairPlan(
+        String(data.get('reportId')),
+        String(data.get('actionPlan')),
+        String(data.get('targetDate')),
+      );
+      setRepairs(await fetchMyRepairs());
+      setRepairMessage('Action plan saved. The finding remains public.');
+      form.reset();
+    } catch (error) {
+      setRepairMessage(error instanceof Error ? error.message : 'Plan failed.');
+    }
+  }
+
+  async function sendReinspection(reportId: string) {
+    const evidenceId = window.prompt('Approved repair evidence ID:');
+    const note = window.prompt('What was repaired?');
+    if (!evidenceId || !note) return;
+    try {
+      await requestReinspection(reportId, [evidenceId], note);
+      setRepairs(await fetchMyRepairs());
+      setRepairMessage('Reinspection requested. Reviewer must verify the fix.');
+    } catch (error) {
+      setRepairMessage(
+        error instanceof Error ? error.message : 'Request failed.',
+      );
+    }
+  }
+
+  async function reviewRepair(
+    reportId: string,
+    status: 'resolved' | 'changes_requested',
+  ) {
+    const reason = window.prompt(`Reason for ${status.replaceAll('_', ' ')}:`);
+    if (!reason) return;
+    try {
+      await decideRepair(reportId, status, reason);
+      setReviewRepairs(await fetchReviewerRepairs());
+      setRepairMessage(`Repair marked ${status.replaceAll('_', ' ')}.`);
+    } catch (error) {
+      setRepairMessage(
+        error instanceof Error ? error.message : 'Decision failed.',
+      );
     }
   }
 
@@ -817,6 +884,105 @@ function App() {
       {session.authenticated &&
         session.profile?.role === 'owner_manager' &&
         session.profile.reviewStatus === 'active' && (
+          <section className="claim-panel" aria-labelledby="repair-title">
+            <div>
+              <p className="kicker">Owner repair workflow</p>
+              <h2 id="repair-title">Respond to an open finding</h2>
+              <p>
+                Add a dated action plan, then attach repair evidence and request
+                review. The owner cannot close the finding.
+              </p>
+            </div>
+            <form onSubmit={submitRepairPlan}>
+              <select name="reportId" required defaultValue="">
+                <option value="" disabled>
+                  Select open finding
+                </option>
+                {eligibleRepairs.map((report) => (
+                  <option key={report.id} value={report.id}>
+                    {report.candidateName} · {report.title}
+                  </option>
+                ))}
+              </select>
+              <input
+                name="actionPlan"
+                required
+                minLength={20}
+                placeholder="Repair steps and responsible person"
+              />
+              <input name="targetDate" type="date" required />
+              <button type="submit">Save action plan</button>
+            </form>
+            <div className="claim-list">
+              {repairs.map((repair) => (
+                <article key={repair.reportId}>
+                  <span>{repair.status.replaceAll('_', ' ')}</span>
+                  <strong>{repair.reportTitle}</strong>
+                  <p>{repair.actionPlan}</p>
+                  <small>Target: {repair.targetDate}</small>
+                  {repair.status !== 'resolved' && (
+                    <button
+                      type="button"
+                      onClick={() => void sendReinspection(repair.reportId)}
+                    >
+                      Attach evidence & request reinspection
+                    </button>
+                  )}
+                </article>
+              ))}
+            </div>
+            {repairMessage && <p role="status">{repairMessage}</p>}
+          </section>
+        )}
+      {session.authenticated &&
+        session.user.email === 'reviewer@suraksha.demo' && (
+          <section
+            className="claim-panel"
+            aria-labelledby="repair-review-title"
+          >
+            <div>
+              <p className="kicker">Independent resolution control</p>
+              <h2 id="repair-review-title">Repair review queue</h2>
+            </div>
+            <div className="claim-list">
+              {reviewRepairs.length === 0 ? (
+                <p>No repair cases.</p>
+              ) : (
+                reviewRepairs.map((repair) => (
+                  <article key={repair.reportId}>
+                    <span>{repair.status.replaceAll('_', ' ')}</span>
+                    <strong>{repair.reportTitle}</strong>
+                    <p>{repair.actionPlan}</p>
+                    {repair.status === 'reinspection_requested' && (
+                      <div className="decision-actions">
+                        <button
+                          onClick={() =>
+                            void reviewRepair(repair.reportId, 'resolved')
+                          }
+                        >
+                          Verify resolved
+                        </button>
+                        <button
+                          onClick={() =>
+                            void reviewRepair(
+                              repair.reportId,
+                              'changes_requested',
+                            )
+                          }
+                        >
+                          Request changes
+                        </button>
+                      </div>
+                    )}
+                  </article>
+                ))
+              )}
+            </div>
+          </section>
+        )}
+      {session.authenticated &&
+        session.profile?.role === 'owner_manager' &&
+        session.profile.reviewStatus === 'active' && (
           <section className="claim-panel" aria-labelledby="building-title">
             <div>
               <p className="kicker">Property management</p>
@@ -1129,7 +1295,12 @@ function App() {
               ) : (
                 publicProfile.findings.map((finding) => (
                   <article key={finding.id}>
-                    <span>{finding.category.replaceAll('_', ' ')}</span>
+                    <span>
+                      {finding.category.replaceAll('_', ' ')} ·{' '}
+                      {finding.reportStatus === 'resolved'
+                        ? 'resolved'
+                        : 'open'}
+                    </span>
                     <h3>{finding.title}</h3>
                     <p>{finding.description}</p>
                     <small>
@@ -1138,6 +1309,23 @@ function App() {
                       {finding.approvedEvidenceCount === 1 ? 'item' : 'items'} ·{' '}
                       {new Date(finding.createdAt).toLocaleDateString()}
                     </small>
+                    {finding.repair && (
+                      <div className="repair-history">
+                        <strong>
+                          Repair: {finding.repair.status.replaceAll('_', ' ')}
+                        </strong>
+                        <p>{finding.repair.actionPlan}</p>
+                        <small>Target: {finding.repair.targetDate}</small>
+                        <ol>
+                          {finding.repair.history.map((event, index) => (
+                            <li key={`${event.createdAt}-${index}`}>
+                              {event.eventType.replaceAll('_', ' ')} ·{' '}
+                              {new Date(event.createdAt).toLocaleDateString()}
+                            </li>
+                          ))}
+                        </ol>
+                      </div>
+                    )}
                   </article>
                 ))
               )}

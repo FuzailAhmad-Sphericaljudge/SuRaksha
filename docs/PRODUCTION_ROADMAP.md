@@ -127,6 +127,8 @@ Owners acknowledge issues, post action plans, attach repair evidence and request
 
 Done when an owner cannot close or suppress a report and only reviewed fixes change public status.
 
+Status: complete — approved owners can acknowledge public findings with dated action plans, attach their repair evidence and request reinspection. Reviewers alone can resolve a finding, and only after all attached repair evidence is approved. Public profiles retain the resolved finding and its action/review history while excluding it from the open count.
+
 ## Phase 14 — Professional credentialing and inspections
 
 Build credential submission/review, specialty and expiry enforcement, assignment, scheduling, inspection forms and conflict declarations.

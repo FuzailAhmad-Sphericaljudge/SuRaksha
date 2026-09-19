@@ -22,6 +22,7 @@ import {
   ManagedBuildingRepository,
   EvidenceUploadRepository,
   IssueReportRepository,
+  RepairRepository,
   PropertyCandidateRepository,
 } from './database.js';
 import {
@@ -161,6 +162,18 @@ export function createApp(options: AppOptions = {}) {
   });
   const mergeSchema = z.strictObject({
     targetReportId: z.uuid(),
+    reason: z.string().trim().min(10).max(1000),
+  });
+  const repairPlanSchema = z.strictObject({
+    actionPlan: z.string().trim().min(20).max(3000),
+    targetDate: z.iso.date(),
+  });
+  const reinspectionSchema = z.strictObject({
+    evidenceIds: z.array(z.uuid()).min(1).max(12),
+    note: z.string().trim().min(10).max(1000),
+  });
+  const repairDecisionSchema = z.strictObject({
+    status: z.enum(['resolved', 'changes_requested']),
     reason: z.string().trim().min(10).max(1000),
   });
   app.register(fastifyMultipart, {
@@ -866,6 +879,179 @@ export function createApp(options: AppOptions = {}) {
           error: {
             code: 'CONFLICT',
             message: 'Report is not merged.',
+            requestId: request.id,
+          },
+        });
+  });
+
+  app.get('/api/repairs/mine', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user)
+      return reply.code(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Sign-in is required.',
+          requestId: request.id,
+        },
+      });
+    return database ? new RepairRepository(database).list(user.id) : [];
+  });
+
+  app.get('/api/repairs/eligible', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user)
+      return reply.code(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Sign-in is required.',
+          requestId: request.id,
+        },
+      });
+    return database ? new RepairRepository(database).listEligible(user.id) : [];
+  });
+
+  app.post('/api/reports/:id/repair-plan', async (request, reply) => {
+    const user = currentUser(request.headers);
+    const identifier = z
+      .uuid()
+      .safeParse((request.params as { id?: unknown }).id);
+    const parsed = repairPlanSchema.safeParse(request.body);
+    if (!user)
+      return reply.code(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Sign-in is required.',
+          requestId: request.id,
+        },
+      });
+    if (!database || !identifier.success || !parsed.success)
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'A valid action plan and target date are required.',
+          requestId: request.id,
+        },
+      });
+    const repository = new RepairRepository(database);
+    if (!repository.ownerCanManage(user.id, identifier.data))
+      return reply.code(403).send({
+        error: {
+          code: 'FORBIDDEN',
+          message: 'An approved property claim is required.',
+          requestId: request.id,
+        },
+      });
+    repository.savePlan({
+      reportId: identifier.data,
+      ownerUserId: user.id,
+      ...parsed.data,
+      now: now().toISOString(),
+      eventId: randomUUID(),
+    });
+    return reply.code(201).send({ status: 'action_planned' });
+  });
+
+  app.post('/api/reports/:id/request-reinspection', async (request, reply) => {
+    const user = currentUser(request.headers);
+    const identifier = z
+      .uuid()
+      .safeParse((request.params as { id?: unknown }).id);
+    const parsed = reinspectionSchema.safeParse(request.body);
+    if (!user)
+      return reply.code(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Sign-in is required.',
+          requestId: request.id,
+        },
+      });
+    if (!database || !identifier.success || !parsed.success)
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Repair evidence and a note are required.',
+          requestId: request.id,
+        },
+      });
+    const repository = new RepairRepository(database);
+    if (
+      !repository.ownerCanManage(user.id, identifier.data) ||
+      !new EvidenceUploadRepository(database).ownsAll(
+        user.id,
+        parsed.data.evidenceIds,
+      )
+    )
+      return reply.code(403).send({
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Only the approved owner may attach their evidence.',
+          requestId: request.id,
+        },
+      });
+    return repository.requestReinspection({
+      reportId: identifier.data,
+      ownerUserId: user.id,
+      ...parsed.data,
+      now: now().toISOString(),
+      eventId: randomUUID(),
+    })
+      ? { status: 'reinspection_requested' }
+      : reply.code(409).send({
+          error: {
+            code: 'CONFLICT',
+            message: 'Create an action plan before requesting reinspection.',
+            requestId: request.id,
+          },
+        });
+  });
+
+  app.get('/api/reviewer/repairs', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user || !isDemoReviewer(user.email))
+      return reply.code(403).send({
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Reviewer access is required.',
+          requestId: request.id,
+        },
+      });
+    return database ? new RepairRepository(database).list() : [];
+  });
+
+  app.post('/api/reviewer/repairs/:id/decision', async (request, reply) => {
+    const user = currentUser(request.headers);
+    const identifier = z
+      .uuid()
+      .safeParse((request.params as { id?: unknown }).id);
+    const parsed = repairDecisionSchema.safeParse(request.body);
+    if (!user || !isDemoReviewer(user.email))
+      return reply.code(403).send({
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Reviewer access is required.',
+          requestId: request.id,
+        },
+      });
+    if (!database || !identifier.success || !parsed.success)
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'A valid repair decision is required.',
+          requestId: request.id,
+        },
+      });
+    return new RepairRepository(database).decide(
+      identifier.data,
+      parsed.data.status === 'resolved',
+      parsed.data.reason,
+      now().toISOString(),
+      randomUUID(),
+    )
+      ? { status: parsed.data.status }
+      : reply.code(409).send({
+          error: {
+            code: 'CONFLICT',
+            message: 'Reinspection and approved repair evidence are required.',
             requestId: request.id,
           },
         });

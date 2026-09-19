@@ -460,6 +460,188 @@ describe('API foundation', () => {
     database.close();
   });
 
+  it('keeps repair closure under reviewer control and preserves public history', async () => {
+    const database = openDatabase(':memory:');
+    const app = createApp({ mode: 'demo', database });
+    apps.push(app);
+    const ownerId = '30000000-0000-4000-8000-000000000001';
+    const reporterId = '30000000-0000-4000-8000-000000000002';
+    const candidateId = '30000000-0000-4000-8000-000000000003';
+    const reportId = '30000000-0000-4000-8000-000000000004';
+    const evidenceId = '30000000-0000-4000-8000-000000000005';
+    const repairEvidenceId = '30000000-0000-4000-8000-000000000006';
+    database
+      .prepare('INSERT INTO users VALUES (?, ?, ?, ?, ?)')
+      .run(
+        ownerId,
+        'repair-owner@test.local',
+        'Repair Owner',
+        'unused',
+        '2026-09-20T00:00:00Z',
+      );
+    database
+      .prepare('INSERT INTO users VALUES (?, ?, ?, ?, ?)')
+      .run(
+        reporterId,
+        'reporter@test.local',
+        'Reporter',
+        'unused',
+        '2026-09-20T00:00:00Z',
+      );
+    database
+      .prepare(
+        'INSERT INTO property_candidates(id,name,locality,source,created_at,property_type) VALUES (?,?,?,?,?,?)',
+      )
+      .run(
+        candidateId,
+        'Repair Test Hostel',
+        'Kota',
+        'test',
+        '2026-09-20T00:00:00Z',
+        'hostel',
+      );
+    database
+      .prepare(
+        'INSERT INTO property_claims(id,candidate_id,claimant_user_id,evidence_note,status,created_at) VALUES (?,?,?,?,?,?)',
+      )
+      .run(
+        'claim-repair',
+        candidateId,
+        ownerId,
+        'Approved ownership evidence for repair workflow.',
+        'approved',
+        '2026-09-20T00:00:00Z',
+      );
+    database
+      .prepare(
+        'INSERT INTO evidence_uploads(id,user_id,original_name,media_type,byte_size,sha256,storage_key,moderation_status,created_at) VALUES (?,?,?,?,?,?,?,?,?)',
+      )
+      .run(
+        evidenceId,
+        reporterId,
+        'finding.jpg',
+        'image/jpeg',
+        10,
+        'finding-hash',
+        'finding.jpg',
+        'approved',
+        '2026-09-20T00:00:00Z',
+      );
+    database
+      .prepare(
+        'INSERT INTO evidence_uploads(id,user_id,original_name,media_type,byte_size,sha256,storage_key,moderation_status,created_at) VALUES (?,?,?,?,?,?,?,?,?)',
+      )
+      .run(
+        repairEvidenceId,
+        ownerId,
+        'repair.jpg',
+        'image/jpeg',
+        10,
+        'repair-hash',
+        'repair.jpg',
+        'pending',
+        '2026-09-20T00:00:00Z',
+      );
+    database
+      .prepare(
+        'INSERT INTO issue_reports(id,candidate_id,building_id,reporter_user_id,category,title,description,visibility,status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
+      )
+      .run(
+        reportId,
+        candidateId,
+        null,
+        reporterId,
+        'electrical',
+        'Exposed wiring',
+        'Approved public finding requiring an owner repair.',
+        'public_redacted',
+        'approved',
+        '2026-09-20T00:00:00Z',
+      );
+    database
+      .prepare('INSERT INTO report_evidence VALUES (?, ?)')
+      .run(reportId, evidenceId);
+    const ownerHeaders = {
+      'oai-authenticated-user-id': ownerId,
+      'oai-authenticated-user-email': 'repair-owner@test.local',
+      'oai-authenticated-user-full-name': 'Repair%20Owner',
+      'oai-authenticated-user-full-name-encoding': 'percent-encoded-utf-8',
+    };
+    const reviewerHeaders = {
+      ...ownerHeaders,
+      'oai-authenticated-user-id': 'reviewer-workspace',
+      'oai-authenticated-user-email': 'reviewer@suraksha.demo',
+    };
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: `/api/reports/${reportId}/repair-plan`,
+          headers: ownerHeaders,
+          payload: {
+            actionPlan: 'Replace exposed wiring and install a sealed conduit.',
+            targetDate: '2026-10-01',
+          },
+        })
+      ).statusCode,
+    ).toBe(201);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: `/api/reports/${reportId}/request-reinspection`,
+          headers: ownerHeaders,
+          payload: {
+            evidenceIds: [repairEvidenceId],
+            note: 'Wiring replaced and conduit installed.',
+          },
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: `/api/reviewer/repairs/${reportId}/decision`,
+          headers: reviewerHeaders,
+          payload: {
+            status: 'resolved',
+            reason: 'Fix is not verified while repair evidence is pending.',
+          },
+        })
+      ).statusCode,
+    ).toBe(409);
+    database
+      .prepare(
+        "UPDATE evidence_uploads SET moderation_status = 'approved' WHERE id = ?",
+      )
+      .run(repairEvidenceId);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: `/api/reviewer/repairs/${reportId}/decision`,
+          headers: reviewerHeaders,
+          payload: {
+            status: 'resolved',
+            reason:
+              'Approved repair evidence confirms enclosed replacement wiring.',
+          },
+        })
+      ).statusCode,
+    ).toBe(200);
+    const profile = (
+      await app.inject(`/api/public/profiles/${candidateId}`)
+    ).json();
+    expect(profile.verification.openFindings).toBe(0);
+    expect(profile.findings[0]).toMatchObject({
+      reportStatus: 'resolved',
+      repair: { status: 'resolved' },
+    });
+    expect(profile.findings[0].repair.history).toHaveLength(3);
+    database.close();
+  });
+
   it('rejects duplicate registration and incorrect passwords', async () => {
     const database = openDatabase(':memory:');
     const app = createApp({ mode: 'demo', database });

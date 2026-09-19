@@ -157,8 +157,22 @@ export type PublicPropertyProfile = {
     category: string;
     title: string;
     description: string;
+    reportStatus: 'approved' | 'resolved';
     createdAt: string;
     approvedEvidenceCount: number;
+    repair: null | {
+      status: string;
+      actionPlan: string;
+      targetDate: string;
+      reviewerReason: string | null;
+      updatedAt: string;
+      history: Array<{
+        eventType: string;
+        actorType: string;
+        note: string;
+        createdAt: string;
+      }>;
+    };
   }>;
   limitations: string[];
 };
@@ -414,4 +428,93 @@ export async function unmergeReport(sourceId: string, reason: string) {
     body: JSON.stringify({ reason }),
   });
   if (!response.ok) throw new Error('Report unmerge failed.');
+}
+
+export type RepairCase = {
+  reportId: string;
+  reportTitle: string;
+  candidateId: string;
+  candidateName: string;
+  actionPlan: string;
+  targetDate: string;
+  status:
+    | 'action_planned'
+    | 'reinspection_requested'
+    | 'resolved'
+    | 'changes_requested';
+  reviewerReason: string | null;
+  updatedAt: string;
+  evidenceIds: string[];
+};
+export type EligibleRepairReport = {
+  id: string;
+  title: string;
+  category: string;
+  candidateName: string;
+};
+async function jsonRequest(url: string, method: string, body?: unknown) {
+  const response = await fetch(url, {
+    method,
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json' },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  const result = await response.json();
+  if (!response.ok)
+    throw new Error(result?.error?.message ?? 'Request failed.');
+  return result;
+}
+export async function fetchMyRepairs(): Promise<RepairCase[]> {
+  const response = await fetch('/api/repairs/mine', {
+    credentials: 'same-origin',
+    cache: 'no-store',
+  });
+  if (!response.ok) throw new Error('Repairs unavailable.');
+  return (await response.json()) as RepairCase[];
+}
+export async function fetchEligibleRepairs(): Promise<EligibleRepairReport[]> {
+  const response = await fetch('/api/repairs/eligible', {
+    credentials: 'same-origin',
+    cache: 'no-store',
+  });
+  if (!response.ok) throw new Error('Eligible reports unavailable.');
+  return (await response.json()) as EligibleRepairReport[];
+}
+export async function saveRepairPlan(
+  reportId: string,
+  actionPlan: string,
+  targetDate: string,
+) {
+  return jsonRequest(`/api/reports/${reportId}/repair-plan`, 'POST', {
+    actionPlan,
+    targetDate,
+  });
+}
+export async function requestReinspection(
+  reportId: string,
+  evidenceIds: string[],
+  note: string,
+) {
+  return jsonRequest(`/api/reports/${reportId}/request-reinspection`, 'POST', {
+    evidenceIds,
+    note,
+  });
+}
+export async function fetchReviewerRepairs(): Promise<RepairCase[]> {
+  const response = await fetch('/api/reviewer/repairs', {
+    credentials: 'same-origin',
+    cache: 'no-store',
+  });
+  if (!response.ok) throw new Error('Repair queue unavailable.');
+  return (await response.json()) as RepairCase[];
+}
+export async function decideRepair(
+  reportId: string,
+  status: 'resolved' | 'changes_requested',
+  reason: string,
+) {
+  return jsonRequest(`/api/reviewer/repairs/${reportId}/decision`, 'POST', {
+    status,
+    reason,
+  });
 }
