@@ -188,6 +188,31 @@ describe('API foundation', () => {
       name: 'Real Student Hostel',
       source: 'user_submission',
     });
+    const report = await app.inject({
+      method: 'POST',
+      url: '/api/reports',
+      headers: { cookie },
+      payload: {
+        candidateId: candidate.json().id,
+        buildingId: null,
+        category: 'fire_safety',
+        title: 'Blocked fire exit',
+        description:
+          'The marked fire exit was blocked by stored furniture this morning.',
+        visibility: 'public_redacted',
+        evidenceIds: [upload.json().id],
+      },
+    });
+    expect(report.statusCode).toBe(201);
+    expect(
+      (
+        await app.inject({ url: '/api/reports/mine', headers: { cookie } })
+      ).json()[0],
+    ).toMatchObject({
+      title: 'Blocked fire exit',
+      status: 'submitted',
+      evidenceIds: [upload.json().id],
+    });
     expect((await app.inject('/api/candidates')).json()).toHaveLength(1);
     expect(
       (await app.inject('/api/candidates/search?q=kota&type=hostel')).json(),

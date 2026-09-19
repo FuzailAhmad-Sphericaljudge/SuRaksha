@@ -21,10 +21,13 @@ import {
   createBuilding,
   decideClaim,
   fetchMyEvidence,
+  fetchBuildings,
+  fetchMyReports,
   fetchMyClaims,
   fetchMyBuildings,
   fetchReviewerClaims,
   uploadEvidence,
+  createIssueReport,
   loginDemoAccount,
   logoutDemoAccount,
   registerDemoAccount,
@@ -34,6 +37,8 @@ import {
   type PropertyClaim,
   type ManagedBuilding,
   type EvidenceUpload,
+  type PublicBuilding,
+  type IssueReport,
 } from './api';
 import './styles.css';
 
@@ -95,6 +100,9 @@ function App() {
   const [buildingMessage, setBuildingMessage] = useState('');
   const [evidence, setEvidence] = useState<EvidenceUpload[]>([]);
   const [uploadMessage, setUploadMessage] = useState('');
+  const [reportBuildings, setReportBuildings] = useState<PublicBuilding[]>([]);
+  const [reports, setReports] = useState<IssueReport[]>([]);
+  const [reportMessage, setReportMessage] = useState('');
   const [query, setQuery] = useState('');
   const [message, setMessage] = useState(
     'Search is a visual preview. No live properties are indexed.',
@@ -109,6 +117,10 @@ function App() {
       void fetchMyEvidence()
         .then(setEvidence)
         .catch(() => setUploadMessage('Evidence could not be loaded.'));
+    if (session.authenticated)
+      void fetchMyReports()
+        .then(setReports)
+        .catch(() => setReportMessage('Reports could not be loaded.'));
     const controller = new AbortController();
     void Promise.all([
       fetchHealth(controller.signal),
@@ -358,6 +370,36 @@ function App() {
     } catch (error) {
       setUploadMessage(
         error instanceof Error ? error.message : 'Upload failed.',
+      );
+    }
+  }
+
+  async function selectReportProperty(candidateId: string) {
+    setReportBuildings(candidateId ? await fetchBuildings(candidateId) : []);
+  }
+
+  async function submitReport(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setReportMessage('');
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    try {
+      await createIssueReport({
+        candidateId: String(data.get('candidateId')),
+        buildingId: String(data.get('buildingId') || '') || null,
+        category: String(data.get('category')),
+        title: String(data.get('title')),
+        description: String(data.get('description')),
+        visibility: String(data.get('visibility')),
+        evidenceIds: data.getAll('evidenceIds').map(String),
+      });
+      setReports(await fetchMyReports());
+      setReportMessage('Issue report submitted for review.');
+      form.reset();
+      setReportBuildings([]);
+    } catch (error) {
+      setReportMessage(
+        error instanceof Error ? error.message : 'Report failed.',
       );
     }
   }
@@ -668,6 +710,108 @@ function App() {
                   {(item.byteSize / 1024).toFixed(1)} KB · {item.mediaType}
                 </p>
                 <a href={`/api/evidence/${item.id}/file`}>Download original</a>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+      {session.authenticated && (
+        <section className="report-panel" aria-labelledby="report-title">
+          <div>
+            <p className="kicker">Location-specific reporting</p>
+            <h2 id="report-title">Report a safety concern</h2>
+            <p>
+              Select the property, optional building and any private evidence
+              you already uploaded.
+            </p>
+          </div>
+          <form onSubmit={submitReport}>
+            <select
+              name="candidateId"
+              required
+              defaultValue=""
+              onChange={(event) =>
+                void selectReportProperty(event.target.value)
+              }
+            >
+              <option value="" disabled>
+                Select property
+              </option>
+              {candidates.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {candidate.name} — {candidate.locality}
+                </option>
+              ))}
+            </select>
+            <select name="buildingId" defaultValue="">
+              <option value="">Property-wide / building unknown</option>
+              {reportBuildings.map((building) => (
+                <option key={building.id} value={building.id}>
+                  {building.name}
+                </option>
+              ))}
+            </select>
+            <select name="category" required defaultValue="">
+              <option value="" disabled>
+                Issue category
+              </option>
+              <option value="fire_safety">Fire safety</option>
+              <option value="electrical">Electrical</option>
+              <option value="structural">Structural</option>
+              <option value="water_ingress">Water ingress</option>
+              <option value="blocked_access">Blocked access</option>
+              <option value="overcrowding">Overcrowding</option>
+              <option value="sanitation">Sanitation</option>
+              <option value="other_safety">Other safety</option>
+            </select>
+            <input
+              name="title"
+              minLength={5}
+              maxLength={140}
+              required
+              placeholder="Short issue title"
+            />
+            <textarea
+              name="description"
+              minLength={20}
+              maxLength={4000}
+              required
+              placeholder="Describe what you observed, where and when."
+            />
+            <select name="visibility" defaultValue="private_review">
+              <option value="private_review">Private review</option>
+              <option value="public_redacted">Public after redaction</option>
+              <option value="confidential">Confidential</option>
+            </select>
+            <fieldset>
+              <legend>Attach your private evidence</legend>
+              {evidence.length === 0 ? (
+                <p>Upload evidence above if needed.</p>
+              ) : (
+                evidence.map((item) => (
+                  <label key={item.id}>
+                    <input type="checkbox" name="evidenceIds" value={item.id} />{' '}
+                    {item.originalName}
+                  </label>
+                ))
+              )}
+            </fieldset>
+            <button type="submit">Submit report</button>
+            {reportMessage && <p role="status">{reportMessage}</p>}
+          </form>
+          <div className="claim-list">
+            {reports.map((report) => (
+              <article key={report.id}>
+                <span>
+                  {report.status} · {report.visibility.replaceAll('_', ' ')}
+                </span>
+                <strong>{report.title}</strong>
+                <p>
+                  {report.candidateName}
+                  {report.buildingName
+                    ? ` · ${report.buildingName}`
+                    : ''} · {report.category.replaceAll('_', ' ')}
+                </p>
               </article>
             ))}
           </div>

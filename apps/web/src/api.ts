@@ -257,3 +257,62 @@ export async function uploadEvidence(file: File): Promise<EvidenceUpload> {
   if (!response.ok) throw new Error(body?.error?.message ?? 'Upload failed.');
   return body as EvidenceUpload;
 }
+
+export type PublicBuilding = {
+  id: string;
+  candidateId: string;
+  name: string;
+  floors: number;
+};
+export async function fetchBuildings(
+  candidateId: string,
+): Promise<PublicBuilding[]> {
+  const response = await fetch(
+    `/api/buildings?${new URLSearchParams({ candidateId })}`,
+    { cache: 'no-store' },
+  );
+  if (!response.ok) throw new Error('Buildings unavailable.');
+  return (await response.json()) as PublicBuilding[];
+}
+export type IssueReport = {
+  id: string;
+  candidateId: string;
+  candidateName?: string;
+  buildingId: string | null;
+  buildingName?: string | null;
+  category: string;
+  title: string;
+  description: string;
+  visibility: string;
+  status: string;
+  evidenceIds: string[];
+  createdAt: string;
+};
+export async function fetchMyReports(): Promise<IssueReport[]> {
+  const response = await fetch('/api/reports/mine', {
+    cache: 'no-store',
+    credentials: 'same-origin',
+  });
+  if (!response.ok) throw new Error('Reports unavailable.');
+  return (await response.json()) as IssueReport[];
+}
+export async function createIssueReport(input: {
+  candidateId: string;
+  buildingId: string | null;
+  category: string;
+  title: string;
+  description: string;
+  visibility: string;
+  evidenceIds: string[];
+}): Promise<IssueReport> {
+  const response = await fetch('/api/reports', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const body = await response.json();
+  if (!response.ok)
+    throw new Error(body?.error?.message ?? 'Report submission failed.');
+  return body as IssueReport;
+}

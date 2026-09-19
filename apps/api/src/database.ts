@@ -72,6 +72,19 @@ export function openDatabase(path: string) {
     );
     INSERT OR IGNORE INTO schema_migrations(version, applied_at)
       VALUES (7, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    CREATE TABLE IF NOT EXISTS issue_reports (
+      id TEXT PRIMARY KEY, candidate_id TEXT NOT NULL REFERENCES property_candidates(id),
+      building_id TEXT REFERENCES managed_buildings(id), reporter_user_id TEXT NOT NULL REFERENCES users(id),
+      category TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL,
+      visibility TEXT NOT NULL CHECK(visibility IN ('private_review', 'public_redacted', 'confidential')),
+      status TEXT NOT NULL DEFAULT 'submitted', created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS report_evidence (
+      report_id TEXT NOT NULL REFERENCES issue_reports(id) ON DELETE CASCADE,
+      evidence_id TEXT NOT NULL REFERENCES evidence_uploads(id), PRIMARY KEY(report_id, evidence_id)
+    );
+    INSERT OR IGNORE INTO schema_migrations(version, applied_at)
+      VALUES (8, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
   `);
   const candidateColumns = database
     .prepare('PRAGMA table_info(property_candidates)')
@@ -297,6 +310,22 @@ export class ManagedBuildingRepository {
       )
       .all(userId) as ManagedBuildingRecord[];
   }
+  listForCandidate(candidateId: string): ManagedBuildingRecord[] {
+    return this.database
+      .prepare(
+        'SELECT id, candidate_id AS candidateId, owner_user_id AS ownerUserId, name, floors, created_at AS createdAt FROM managed_buildings WHERE candidate_id = ? ORDER BY name ASC',
+      )
+      .all(candidateId) as ManagedBuildingRecord[];
+  }
+  belongsToCandidate(id: string, candidateId: string): boolean {
+    return Boolean(
+      this.database
+        .prepare(
+          'SELECT 1 AS present FROM managed_buildings WHERE id = ? AND candidate_id = ?',
+        )
+        .get(id, candidateId),
+    );
+  }
 }
 
 export type EvidenceUploadRecord = {
@@ -344,5 +373,86 @@ export class EvidenceUploadRepository {
         )
         .get(id, userId) as EvidenceUploadRecord | undefined) ?? null
     );
+  }
+  ownsAll(userId: string, ids: string[]): boolean {
+    return ids.every((id) =>
+      Boolean(
+        this.database
+          .prepare(
+            'SELECT 1 AS present FROM evidence_uploads WHERE id = ? AND user_id = ?',
+          )
+          .get(id, userId),
+      ),
+    );
+  }
+}
+
+export type IssueReportRecord = {
+  id: string;
+  candidateId: string;
+  candidateName: string;
+  buildingId: string | null;
+  buildingName: string | null;
+  reporterUserId: string;
+  category: string;
+  title: string;
+  description: string;
+  visibility: 'private_review' | 'public_redacted' | 'confidential';
+  status: 'submitted';
+  createdAt: string;
+  evidenceIds: string[];
+};
+export class IssueReportRepository {
+  constructor(private readonly database: DatabaseSync) {}
+  save(record: Omit<IssueReportRecord, 'candidateName' | 'buildingName'>) {
+    this.database.exec('BEGIN');
+    try {
+      this.database
+        .prepare(
+          'INSERT INTO issue_reports(id, candidate_id, building_id, reporter_user_id, category, title, description, visibility, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        )
+        .run(
+          record.id,
+          record.candidateId,
+          record.buildingId,
+          record.reporterUserId,
+          record.category,
+          record.title,
+          record.description,
+          record.visibility,
+          record.status,
+          record.createdAt,
+        );
+      const statement = this.database.prepare(
+        'INSERT INTO report_evidence(report_id, evidence_id) VALUES (?, ?)',
+      );
+      for (const evidenceId of record.evidenceIds)
+        statement.run(record.id, evidenceId);
+      this.database.exec('COMMIT');
+    } catch (error) {
+      this.database.exec('ROLLBACK');
+      throw error;
+    }
+  }
+  listForUser(userId: string): IssueReportRecord[] {
+    const rows = this.database
+      .prepare(
+        `SELECT issue_reports.id, issue_reports.candidate_id AS candidateId, property_candidates.name AS candidateName,
+      issue_reports.building_id AS buildingId, managed_buildings.name AS buildingName, reporter_user_id AS reporterUserId, category, title,
+      description, visibility, status, issue_reports.created_at AS createdAt
+      FROM issue_reports JOIN property_candidates ON property_candidates.id = issue_reports.candidate_id
+      LEFT JOIN managed_buildings ON managed_buildings.id = issue_reports.building_id
+      WHERE reporter_user_id = ? ORDER BY issue_reports.created_at DESC`,
+      )
+      .all(userId) as Array<Omit<IssueReportRecord, 'evidenceIds'>>;
+    const evidence = this.database.prepare(
+      'SELECT evidence_id AS evidenceId FROM report_evidence WHERE report_id = ?',
+    );
+    return rows.map((row) => ({
+      ...row,
+      evidenceIds: (evidence.all(row.id) as Array<{ evidenceId: string }>).map(
+        (item) => item.evidenceId,
+      ),
+    }));
   }
 }

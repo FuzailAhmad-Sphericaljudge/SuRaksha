@@ -103,6 +103,8 @@ Build building/floor/area selection, issue form, draft save, photo/video attachm
 
 Done when a student submits a report, refreshes, and sees the same report and evidence status.
 
+Status: complete for the demo vertical slice — authenticated users can submit property/building-scoped reports with category, narrative, privacy choice and owned evidence; reports persist and reload after refresh. Floor/area selection and draft autosave remain follow-up work.
+
 ## Phase 11 — Moderation and duplicate handling
 
 Build reviewer queues for media and reports, abuse controls, corroboration links, reversible duplicate merges and owner disputes.

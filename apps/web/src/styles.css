@@ -256,6 +256,49 @@ select {
   background: #fff;
   cursor: pointer;
 }
+.report-panel {
+  margin: 1rem clamp(1rem, 3vw, 3rem);
+  padding: clamp(1.25rem, 3vw, 2.5rem);
+  border-radius: 1rem;
+  background: #e8e7ef;
+}
+.report-panel h2 {
+  margin: 0.3rem 0;
+}
+.report-panel form {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.7rem;
+  margin: 1.25rem 0;
+}
+.report-panel input,
+.report-panel select,
+.report-panel textarea,
+.report-panel button,
+.report-panel fieldset {
+  padding: 0.8rem;
+  border: 1px solid #bbb8ca;
+  border-radius: 0.65rem;
+  background: #fff;
+}
+.report-panel textarea,
+.report-panel fieldset,
+.report-panel form > p {
+  grid-column: 1 / -1;
+}
+.report-panel textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+.report-panel fieldset {
+  display: grid;
+  gap: 0.4rem;
+}
+.report-panel button {
+  color: #fff;
+  background: var(--ink);
+  cursor: pointer;
+}
 @media (max-width: 760px) {
   .role-grid,
   .candidate-list {
@@ -266,6 +309,14 @@ select {
   }
   .claim-panel form {
     grid-template-columns: 1fr;
+  }
+  .report-panel form {
+    grid-template-columns: 1fr;
+  }
+  .report-panel textarea,
+  .report-panel fieldset,
+  .report-panel form > p {
+    grid-column: auto;
   }
   .dashboard-strip {
     flex-direction: column;

@@ -21,6 +21,7 @@ import {
   PropertyClaimRepository,
   ManagedBuildingRepository,
   EvidenceUploadRepository,
+  IssueReportRepository,
   PropertyCandidateRepository,
 } from './database.js';
 import {
@@ -98,6 +99,42 @@ export function createApp(options: AppOptions = {}) {
     name: z.string().trim().min(2).max(120),
     floors: z.number().int().min(1).max(300),
   });
+  const reportInputSchema = z
+    .strictObject({
+      candidateId: z.uuid(),
+      buildingId: z.uuid().nullable(),
+      category: z.enum([
+        'fire_safety',
+        'electrical',
+        'structural',
+        'water_ingress',
+        'blocked_access',
+        'overcrowding',
+        'sanitation',
+        'other_safety',
+      ]),
+      title: z.string().trim().min(5).max(140),
+      description: z.string().trim().min(20).max(4000),
+      visibility: z.enum(['private_review', 'public_redacted', 'confidential']),
+      evidenceIds: z.array(z.uuid()).max(12),
+    })
+    .superRefine((value, context) => {
+      if (new Set(value.evidenceIds).size !== value.evidenceIds.length)
+        context.addIssue({
+          code: 'custom',
+          message: 'Evidence cannot be duplicated',
+          path: ['evidenceIds'],
+        });
+      if (
+        value.visibility === 'public_redacted' &&
+        value.evidenceIds.length === 0
+      )
+        context.addIssue({
+          code: 'custom',
+          message: 'Public reports require evidence',
+          path: ['evidenceIds'],
+        });
+    });
   const isDemoReviewer = (email: string) =>
     mode === 'demo' && email.toLowerCase() === 'reviewer@suraksha.demo';
   const currentUser = (headers: IncomingHttpHeaders) =>
@@ -361,6 +398,24 @@ export function createApp(options: AppOptions = {}) {
       : [];
   });
 
+  app.get('/api/buildings', async (request, reply) => {
+    if (!database) return [];
+    const parsed = z
+      .strictObject({ candidateId: z.uuid() })
+      .safeParse(request.query);
+    if (!parsed.success)
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'A valid property candidate is required.',
+          requestId: request.id,
+        },
+      });
+    return new ManagedBuildingRepository(database)
+      .listForCandidate(parsed.data.candidateId)
+      .map(({ ownerUserId: _ownerUserId, ...record }) => record);
+  });
+
   app.get('/api/evidence/mine', async (request, reply) => {
     const user = currentUser(request.headers);
     if (!user)
@@ -504,6 +559,97 @@ export function createApp(options: AppOptions = {}) {
       `attachment; filename="${encodeURIComponent(record.originalName)}"`,
     );
     return reply.send(createReadStream(resolve(uploadRoot, record.storageKey)));
+  });
+
+  app.get('/api/reports/mine', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user)
+      return reply.code(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Sign-in is required.',
+          requestId: request.id,
+        },
+      });
+    return database
+      ? new IssueReportRepository(database).listForUser(user.id)
+      : [];
+  });
+
+  app.post('/api/reports', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user)
+      return reply.code(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Sign-in is required.',
+          requestId: request.id,
+        },
+      });
+    if (!database)
+      return reply.code(503).send({
+        error: {
+          code: 'DATABASE_UNAVAILABLE',
+          message: 'Reporting is unavailable.',
+          requestId: request.id,
+        },
+      });
+    const parsed = reportInputSchema.safeParse(request.body);
+    if (!parsed.success)
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message:
+            'Complete the location, issue details and evidence requirements.',
+          requestId: request.id,
+        },
+      });
+    if (
+      parsed.data.buildingId &&
+      !new ManagedBuildingRepository(database).belongsToCandidate(
+        parsed.data.buildingId,
+        parsed.data.candidateId,
+      )
+    )
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Selected building does not belong to this property.',
+          requestId: request.id,
+        },
+      });
+    if (
+      !new EvidenceUploadRepository(database).ownsAll(
+        user.id,
+        parsed.data.evidenceIds,
+      )
+    )
+      return reply.code(403).send({
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Reports may only attach your own evidence.',
+          requestId: request.id,
+        },
+      });
+    const record = {
+      id: randomUUID(),
+      ...parsed.data,
+      reporterUserId: user.id,
+      status: 'submitted' as const,
+      createdAt: now().toISOString(),
+    };
+    try {
+      new IssueReportRepository(database).save(record);
+    } catch {
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'The selected property or evidence is unavailable.',
+          requestId: request.id,
+        },
+      });
+    }
+    return reply.code(201).send(record);
   });
 
   app.post('/api/buildings', async (request, reply) => {
