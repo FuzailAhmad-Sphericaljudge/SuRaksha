@@ -786,3 +786,31 @@ export async function searchAudit(q = ''): Promise<AuditEvent[]> {
   if (!response.ok) throw new Error('Audit unavailable.');
   return (await response.json()) as AuditEvent[];
 }
+
+export type AnalyticsSnapshot = {
+  generatedAt: string;
+  disclaimer: string;
+  coverage: {
+    totalCandidates: number;
+    coveredCandidates: number;
+    percent: number;
+    staleProfiles: number;
+  };
+  findings: { open: number; oldestOpenDays: number; averageOpenDays: number };
+  duplicates: { merged: number; totalReports: number; ratePercent: number };
+  localities: Array<{
+    locality: string;
+    candidateCount: number;
+    coveredCount: number;
+    gapCount: number;
+  }>;
+  backlog: Array<{ sourceType: string; count: number }>;
+};
+export async function fetchAnalytics(): Promise<AnalyticsSnapshot> {
+  const response = await fetch('/api/reviewer/analytics', {
+    credentials: 'same-origin',
+    cache: 'no-store',
+  });
+  if (!response.ok) throw new Error('Analytics unavailable.');
+  return (await response.json()) as AnalyticsSnapshot;
+}

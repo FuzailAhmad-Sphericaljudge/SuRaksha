@@ -167,6 +167,11 @@ export function openDatabase(path: string) {
     CREATE INDEX IF NOT EXISTS idx_audit_events_entity ON audit_events(entity_type,entity_id,created_at);
     INSERT OR IGNORE INTO schema_migrations(version, applied_at)
       VALUES (14, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    CREATE INDEX IF NOT EXISTS idx_reports_candidate_status ON issue_reports(candidate_id,status,visibility);
+    CREATE INDEX IF NOT EXISTS idx_evidence_moderation ON evidence_uploads(moderation_status);
+    CREATE INDEX IF NOT EXISTS idx_candidates_locality ON property_candidates(locality);
+    INSERT OR IGNORE INTO schema_migrations(version, applied_at)
+      VALUES (15, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
   `);
   const candidateColumns = database
     .prepare('PRAGMA table_info(property_candidates)')
@@ -1500,5 +1505,98 @@ export class ReviewerOperationsRepository {
       AND (? IS NULL OR entity_type=?) ORDER BY created_at DESC LIMIT 100`,
       )
       .all(query, term, entityType ?? null, entityType ?? null);
+  }
+}
+
+export class AnalyticsRepository {
+  constructor(private readonly database: DatabaseSync) {}
+  snapshot(now: string) {
+    const scalar = (sql: string) =>
+      (this.database.prepare(sql).get() as { value: number }).value;
+    const totalCandidates = scalar(
+      'SELECT COUNT(*) AS value FROM property_candidates',
+    );
+    const coveredCandidates =
+      scalar(`SELECT COUNT(DISTINCT issue_reports.candidate_id) AS value
+      FROM issue_reports JOIN report_evidence ON report_evidence.report_id=issue_reports.id
+      JOIN evidence_uploads ON evidence_uploads.id=report_evidence.evidence_id AND evidence_uploads.moderation_status='approved'
+      WHERE issue_reports.visibility='public_redacted' AND issue_reports.status IN ('approved','resolved')`);
+    const totalReports = scalar('SELECT COUNT(*) AS value FROM issue_reports');
+    const mergedReports = scalar(
+      "SELECT COUNT(*) AS value FROM issue_reports WHERE status='merged'",
+    );
+    const openFindings = scalar(
+      "SELECT COUNT(*) AS value FROM issue_reports WHERE status='approved'",
+    );
+    const unresolvedAge = this.database
+      .prepare(
+        `SELECT COALESCE(MAX(CAST(julianday(?) - julianday(created_at) AS INTEGER)),0) AS oldestDays,
+      COALESCE(AVG(julianday(?) - julianday(created_at)),0) AS averageDays
+      FROM issue_reports WHERE status='approved'`,
+      )
+      .get(now, now) as { oldestDays: number; averageDays: number };
+    const staleProfiles = (
+      this.database
+        .prepare(
+          `SELECT COUNT(*) AS value FROM (
+      SELECT candidate_id,MAX(created_at) AS latest FROM issue_reports
+      WHERE status IN ('approved','resolved') GROUP BY candidate_id
+      HAVING julianday(?) - julianday(latest) > 90)`,
+        )
+        .get(now) as { value: number }
+    ).value;
+    const localities = this.database
+      .prepare(
+        `SELECT locality,COUNT(*) AS candidateCount,
+      SUM(CASE WHEN EXISTS (
+        SELECT 1 FROM issue_reports JOIN report_evidence ON report_evidence.report_id=issue_reports.id
+        JOIN evidence_uploads ON evidence_uploads.id=report_evidence.evidence_id
+        WHERE issue_reports.candidate_id=property_candidates.id
+        AND issue_reports.visibility='public_redacted' AND issue_reports.status IN ('approved','resolved')
+        AND evidence_uploads.moderation_status='approved'
+      ) THEN 1 ELSE 0 END) AS coveredCount
+      FROM property_candidates GROUP BY locality ORDER BY candidateCount DESC,locality ASC LIMIT 50`,
+      )
+      .all() as Array<{
+      locality: string;
+      candidateCount: number;
+      coveredCount: number;
+    }>;
+    const backlog = this.database
+      .prepare(
+        `SELECT source_type AS sourceType,COUNT(*) AS count FROM review_tasks
+      WHERE status!='completed' GROUP BY source_type ORDER BY source_type`,
+      )
+      .all();
+    return {
+      generatedAt: now,
+      disclaimer:
+        'Coverage metrics describe collected and reviewed data. They are not safety scores or estimates of unreported conditions.',
+      coverage: {
+        totalCandidates,
+        coveredCandidates,
+        percent: totalCandidates
+          ? Math.round((coveredCandidates / totalCandidates) * 1000) / 10
+          : 0,
+        staleProfiles,
+      },
+      findings: {
+        open: openFindings,
+        oldestOpenDays: unresolvedAge.oldestDays,
+        averageOpenDays: Math.round(unresolvedAge.averageDays * 10) / 10,
+      },
+      duplicates: {
+        merged: mergedReports,
+        totalReports,
+        ratePercent: totalReports
+          ? Math.round((mergedReports / totalReports) * 1000) / 10
+          : 0,
+      },
+      localities: localities.map((item) => ({
+        ...item,
+        gapCount: item.candidateCount - item.coveredCount,
+      })),
+      backlog,
+    };
   }
 }

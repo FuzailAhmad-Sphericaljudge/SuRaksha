@@ -307,6 +307,29 @@ describe('API foundation', () => {
     });
     expect(publicProfile.json().findings).toHaveLength(1);
     expect(publicProfile.body).not.toContain('reporterUserId');
+    const analytics = await app.inject({
+      url: '/api/reviewer/analytics',
+      headers: { cookie: reviewerCookie },
+    });
+    expect(analytics.statusCode).toBe(200);
+    expect(analytics.json()).toMatchObject({
+      coverage: {
+        totalCandidates: 1,
+        coveredCandidates: 1,
+        percent: 100,
+      },
+      findings: { open: 1 },
+      duplicates: { merged: 0, totalReports: 2, ratePercent: 0 },
+      localities: [
+        {
+          locality: 'Kota, Rajasthan',
+          candidateCount: 1,
+          coveredCount: 1,
+          gapCount: 0,
+        },
+      ],
+    });
+    expect(analytics.json().disclaimer).toContain('not safety scores');
     expect((await app.inject('/api/candidates')).json()).toHaveLength(1);
     expect(
       (await app.inject('/api/candidates/search?q=kota&type=hostel')).json(),

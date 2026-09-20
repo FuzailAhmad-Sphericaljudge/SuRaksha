@@ -275,6 +275,30 @@ select {
   color: #56666b;
   text-transform: capitalize;
 }
+.analytics-panel {
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid #9eada8;
+  border-radius: 0.8rem;
+  background: #edf2ee;
+}
+.analytics-panel > div {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.6rem;
+}
+.analytics-panel article {
+  padding: 0.8rem;
+  background: #fff;
+  border-radius: 0.5rem;
+}
+.analytics-panel article strong,
+.analytics-panel article span {
+  display: block;
+}
+.analytics-panel article strong {
+  font-size: 1.6rem;
+}
 .profile-limitations {
   margin-top: 1rem;
   padding: 1.2rem;
@@ -1073,6 +1097,9 @@ footer > small {
   .live-profile > header,
   .public-findings {
     grid-template-columns: 1fr;
+  }
+  .analytics-panel > div {
+    grid-template-columns: repeat(2, 1fr);
   }
   .discovery-controls span {
     margin-left: 0;

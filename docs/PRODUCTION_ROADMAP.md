@@ -167,6 +167,8 @@ Measure candidate coverage, verification freshness, unresolved issue age, duplic
 
 Done when the team can identify weak coverage without presenting estimates as verified counts.
 
+Status: complete — the reviewer dashboard reports candidate coverage backed by approved public evidence, stale-profile counts, open-finding age, duplicate merge rate, review backlog and per-locality gaps. The API and UI explicitly label these as collection/review coverage metrics rather than safety scores or estimates of unreported conditions.
+
 ## Phase 19 — Privacy, abuse and legal readiness
 
 Complete consent, redaction, retention/deletion, account export, takedown, grievance handling, rate limits and threat modelling. Review third-party data and image licenses.

@@ -27,6 +27,7 @@ import {
   NotificationRepository,
   GuardianRepository,
   ReviewerOperationsRepository,
+  AnalyticsRepository,
   PropertyCandidateRepository,
 } from './database.js';
 import {
@@ -981,6 +982,26 @@ export function createApp(options: AppOptions = {}) {
       parsed.data.q,
       parsed.data.entityType,
     );
+  });
+  app.get('/api/reviewer/analytics', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user || !isDemoReviewer(user.email))
+      return reply.code(403).send({
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Reviewer access is required.',
+          requestId: request.id,
+        },
+      });
+    return database
+      ? new AnalyticsRepository(database).snapshot(now().toISOString())
+      : reply.code(503).send({
+          error: {
+            code: 'DATABASE_UNAVAILABLE',
+            message: 'Analytics are unavailable.',
+            requestId: request.id,
+          },
+        });
   });
 
   app.get('/api/buildings/mine', async (request, reply) => {

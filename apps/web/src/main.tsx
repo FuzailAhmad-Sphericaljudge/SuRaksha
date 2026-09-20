@@ -63,6 +63,7 @@ import {
   fetchReviewTasks,
   updateReviewTask,
   searchAudit,
+  fetchAnalytics,
   loginDemoAccount,
   logoutDemoAccount,
   registerDemoAccount,
@@ -87,6 +88,7 @@ import {
   type GuardianSummary,
   type ReviewTask,
   type AuditEvent,
+  type AnalyticsSnapshot,
 } from './api';
 import './styles.css';
 
@@ -185,6 +187,7 @@ function App() {
   );
   const [reviewTasks, setReviewTasks] = useState<ReviewTask[]>([]);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
+  const [analytics, setAnalytics] = useState<AnalyticsSnapshot | null>(null);
   const [query, setQuery] = useState('');
   const [message, setMessage] = useState(
     'Search is a visual preview. No live properties are indexed.',
@@ -247,6 +250,7 @@ function App() {
       void fetchCredentials(true).then(setReviewCredentials);
       void fetchReviewTasks().then(setReviewTasks);
       void searchAudit().then(setAuditEvents);
+      void fetchAnalytics().then(setAnalytics);
     }
     if (session.authenticated && session.profile?.role === 'professional') {
       void fetchCredentials().then(setCredentials);
@@ -1269,6 +1273,39 @@ function App() {
                 escalation requires a reason.
               </p>
             </div>
+            {analytics && (
+              <div className="analytics-panel">
+                <p>{analytics.disclaimer}</p>
+                <div>
+                  <article>
+                    <strong>{analytics.coverage.percent}%</strong>
+                    <span>profiles with reviewed evidence</span>
+                  </article>
+                  <article>
+                    <strong>{analytics.findings.open}</strong>
+                    <span>open reviewed findings</span>
+                  </article>
+                  <article>
+                    <strong>{analytics.findings.oldestOpenDays}d</strong>
+                    <span>oldest unresolved age</span>
+                  </article>
+                  <article>
+                    <strong>{analytics.duplicates.ratePercent}%</strong>
+                    <span>duplicate merge rate</span>
+                  </article>
+                </div>
+                <details>
+                  <summary>Locality coverage gaps</summary>
+                  {analytics.localities.map((locality) => (
+                    <p key={locality.locality}>
+                      {locality.locality}: {locality.coveredCount}/
+                      {locality.candidateCount} covered · gap{' '}
+                      {locality.gapCount}
+                    </p>
+                  ))}
+                </details>
+              </div>
+            )}
             <div className="claim-list">
               {reviewTasks.map((task) => (
                 <article key={task.id}>
