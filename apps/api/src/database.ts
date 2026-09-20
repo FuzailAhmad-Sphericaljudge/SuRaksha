@@ -8,6 +8,8 @@ export type PropertyCandidateRecord = {
   locality: string;
   propertyType: 'paying_guest' | 'hostel' | 'coaching_institute';
   source: string;
+  sourceUrl?: string | null;
+  observedAt?: string | null;
   createdAt: string;
 };
 
@@ -197,8 +199,17 @@ export function openDatabase(path: string) {
     database.exec(
       "ALTER TABLE property_candidates ADD COLUMN property_type TEXT NOT NULL DEFAULT 'paying_guest'",
     );
+  if (!candidateColumns.some((column) => column.name === 'source_url'))
+    database.exec('ALTER TABLE property_candidates ADD COLUMN source_url TEXT');
+  if (!candidateColumns.some((column) => column.name === 'observed_at'))
+    database.exec(
+      'ALTER TABLE property_candidates ADD COLUMN observed_at TEXT',
+    );
   database.exec(
     "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (4, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+  );
+  database.exec(
+    "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (17, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
   );
   const claimColumns = database
     .prepare('PRAGMA table_info(property_claims)')
@@ -267,7 +278,7 @@ export class PropertyCandidateRepository {
   save(record: PropertyCandidateRecord) {
     this.database
       .prepare(
-        'INSERT INTO property_candidates(id, name, locality, property_type, source, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+        'INSERT INTO property_candidates(id, name, locality, property_type, source, source_url, observed_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       )
       .run(
         record.id,
@@ -275,13 +286,15 @@ export class PropertyCandidateRepository {
         record.locality,
         record.propertyType,
         record.source,
+        record.sourceUrl ?? null,
+        record.observedAt ?? null,
         record.createdAt,
       );
   }
   list(): PropertyCandidateRecord[] {
     return this.database
       .prepare(
-        'SELECT id, name, locality, property_type AS propertyType, source, created_at AS createdAt FROM property_candidates ORDER BY created_at DESC, id ASC',
+        'SELECT id, name, locality, property_type AS propertyType, source, source_url AS sourceUrl, observed_at AS observedAt, created_at AS createdAt FROM property_candidates ORDER BY created_at DESC, id ASC',
       )
       .all() as PropertyCandidateRecord[];
   }
@@ -292,7 +305,7 @@ export class PropertyCandidateRepository {
     const normalized = query.trim().toLowerCase();
     return this.database
       .prepare(
-        `SELECT id, name, locality, property_type AS propertyType, source, created_at AS createdAt
+        `SELECT id, name, locality, property_type AS propertyType, source, source_url AS sourceUrl, observed_at AS observedAt, created_at AS createdAt
         FROM property_candidates
         WHERE (? = '' OR instr(lower(name || ' ' || locality), ?) > 0)
           AND (? IS NULL OR property_type = ?)

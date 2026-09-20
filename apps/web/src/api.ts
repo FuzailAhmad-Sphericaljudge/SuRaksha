@@ -97,6 +97,8 @@ export type PropertyCandidate = {
   locality: string;
   propertyType: 'paying_guest' | 'hostel' | 'coaching_institute';
   source: string;
+  sourceUrl: string | null;
+  observedAt: string | null;
   createdAt: string;
 };
 
@@ -112,7 +114,10 @@ export async function fetchCandidates(
 }
 
 export async function createCandidate(
-  input: Pick<PropertyCandidate, 'name' | 'locality' | 'propertyType'>,
+  input: Pick<
+    PropertyCandidate,
+    'name' | 'locality' | 'propertyType' | 'sourceUrl' | 'observedAt'
+  >,
 ): Promise<PropertyCandidate> {
   const response = await fetch('/api/candidates', {
     method: 'POST',

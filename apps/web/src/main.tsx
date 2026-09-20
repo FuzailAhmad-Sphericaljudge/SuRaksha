@@ -137,7 +137,18 @@ function Arrow() {
   );
 }
 
+type AppPage =
+  | 'home'
+  | 'dashboard'
+  | 'intake'
+  | 'verification'
+  | 'reports'
+  | 'updates'
+  | 'privacy'
+  | 'review';
+
 function App() {
+  const [page, setPage] = useState<AppPage>('home');
   const [connection, setConnection] = useState('checking');
   const [mode, setMode] = useState<'demo' | 'production' | 'unknown'>(
     'unknown',
@@ -425,6 +436,8 @@ function App() {
         propertyType: String(
           data.get('propertyType'),
         ) as PropertyCandidate['propertyType'],
+        sourceUrl: String(data.get('sourceUrl')),
+        observedAt: String(data.get('observedAt')),
       });
       setCandidates((current) => [candidate, ...current]);
       setCandidateMessage(
@@ -815,8 +828,31 @@ function App() {
     setReviewGrievances(await fetchReviewerGrievances());
   }
 
+  const isReviewer =
+    session.authenticated && session.user.email === 'reviewer@suraksha.demo';
+  const pages: ReadonlyArray<readonly [AppPage, string]> = [
+    ['home', 'Home'],
+    ['intake', 'Add a place'],
+    ['reports', 'Report issue'],
+    ...(session.authenticated
+      ? ([
+          ['dashboard', 'Dashboard'],
+          ['verification', 'Verification'],
+          ['updates', 'Private updates'],
+          ['privacy', 'Privacy centre'],
+        ] as const)
+      : []),
+    ...(isReviewer ? ([['review', 'Review desk']] as const) : []),
+  ];
+
+  function navigate(nextPage: AppPage) {
+    setPage(nextPage);
+    setAuthOpen(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
   return (
-    <div className="shell">
+    <div className="shell" data-page={page}>
       <a className="skip-link" href="#top">
         Skip to main content
       </a>
@@ -829,13 +865,19 @@ function App() {
         <span>SafePG.</span>
       </div>
       <header className="topbar">
-        <a className="brand" href="#top">
+        <button className="brand brand-button" onClick={() => navigate('home')}>
           SafePG<span>.</span>
-        </a>
+        </button>
         <nav aria-label="Primary">
-          <a href="#process">How it works</a>
-          <a href="#profiles">Demo profiles</a>
-          <a href="#purpose">About</a>
+          {pages.map(([id, label]) => (
+            <button
+              key={id}
+              className={page === id ? 'active' : ''}
+              onClick={() => navigate(id)}
+            >
+              {label}
+            </button>
+          ))}
         </nav>
         {session.authenticated ? (
           <button className="account-button" onClick={() => void logout()}>
@@ -850,6 +892,17 @@ function App() {
           </button>
         )}
       </header>
+      {page !== 'home' && (
+        <header className="page-heading" id="top">
+          <p className="kicker">SafePG workspace</p>
+          <h1>{pages.find(([id]) => id === page)?.[1]}</h1>
+          <p>
+            {session.authenticated
+              ? 'Each action stays in its own private, role-aware workspace. Public profile information is kept separate from evidence and account data.'
+              : 'Sign in with a demo account to use this workspace. You can still explore the public product story from Home.'}
+          </p>
+        </header>
+      )}
       {authOpen && mode === 'demo' && (
         <form className="auth-panel" onSubmit={register}>
           <strong>
@@ -950,6 +1003,17 @@ function App() {
               <option value="hostel">Hostel</option>
               <option value="coaching_institute">Coaching institute</option>
             </select>
+            <input
+              name="sourceUrl"
+              type="url"
+              placeholder="Public source URL (Maps or official site)"
+              aria-label="Public source URL"
+              required
+            />
+            <label className="field-label">
+              Last personally checked
+              <input name="observedAt" type="date" required />
+            </label>
             <button type="submit">Submit candidate</button>
             {candidateMessage && <p role="status">{candidateMessage}</p>}
           </form>
@@ -962,6 +1026,10 @@ function App() {
                   <span>Candidate · Unverified</span>
                   <strong>{candidate.name}</strong>
                   <p>{candidate.locality}</p>
+                  <small>
+                    Observed {candidate.observedAt ?? 'date unavailable'} ·
+                    provenance recorded
+                  </small>
                 </article>
               ))
             )}

@@ -93,6 +93,8 @@ export function createApp(options: AppOptions = {}) {
     name: z.string().trim().min(3).max(160),
     locality: z.string().trim().min(3).max(120),
     propertyType: z.enum(['paying_guest', 'hostel', 'coaching_institute']),
+    sourceUrl: z.url().max(500).optional(),
+    observedAt: z.iso.date().optional(),
   });
   const claimSchema = z.strictObject({
     candidateId: z.uuid(),
@@ -448,6 +450,8 @@ export function createApp(options: AppOptions = {}) {
       id: randomUUID(),
       ...parsed.data,
       source: 'user_submission',
+      sourceUrl: parsed.data.sourceUrl ?? null,
+      observedAt: parsed.data.observedAt ?? null,
       createdAt: now().toISOString(),
     };
     new PropertyCandidateRepository(database).save(record);

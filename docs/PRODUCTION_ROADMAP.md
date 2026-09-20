@@ -207,6 +207,8 @@ Launch one locality with a small reviewed dataset and named operational reviewer
 
 Done when every live record has provenance, support ownership and a measurable freshness policy.
 
+Status: partial - the product now has separate task-focused workspaces, a public-first landing page and provenance-aware locality intake that records a public source and observation date. The production pilot still needs a selected locality, named support reviewers, source-license approval and an operational freshness SLA before any submitted record can be labelled live or verified.
+
 ## Phase 24 — Expansion
 
 Add localities only when discovery coverage, reviewer capacity and professional capacity can support them. Introduce permitted partner integrations after validation.

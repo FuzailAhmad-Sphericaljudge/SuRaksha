@@ -33,8 +33,19 @@ body {
 }
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
+  max-width: 100%;
+  min-width: 0;
+}
+button,
+a,
+p,
+strong,
+small,
+span {
+  overflow-wrap: anywhere;
 }
 .account-button {
   justify-self: end;
@@ -162,6 +173,12 @@ select {
   border: 1px solid #aab9c0;
   border-radius: 0.65rem;
   background: #fff;
+}
+.field-label {
+  display: grid;
+  gap: 0.35rem;
+  color: #42545c;
+  font-size: 0.78rem;
 }
 .candidate-intake button {
   color: #fff;
@@ -332,7 +349,7 @@ select {
 }
 .claim-panel form {
   display: grid;
-  grid-template-columns: 1fr 2fr auto;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
   gap: 0.7rem;
   margin: 1.25rem 0;
 }
@@ -475,7 +492,59 @@ svg {
 .shell {
   width: min(100%, 1600px);
   margin: auto;
-  overflow: hidden;
+  overflow: clip;
+}
+.shell > .role-panel,
+.shell > .dashboard-strip,
+.shell > .candidate-intake,
+.shell > .claim-panel,
+.shell > .report-panel {
+  display: none;
+}
+.shell[data-page='dashboard'] > .role-panel,
+.shell[data-page='dashboard'] > .dashboard-strip,
+.shell[data-page='dashboard'] > [aria-labelledby='repair-title'],
+.shell[data-page='dashboard'] > [aria-labelledby='building-title'],
+.shell[data-page='dashboard'] > [aria-labelledby='sharing-title'],
+.shell[data-page='dashboard'] > [aria-labelledby='guardian-title'],
+.shell[data-page='intake'] > .candidate-intake,
+.shell[data-page='verification'] > .dashboard-strip,
+.shell[data-page='verification'] > [aria-labelledby='claim-title'],
+.shell[data-page='verification'] > [aria-labelledby='credential-title'],
+.shell[data-page='reports'] > [aria-labelledby='evidence-title'],
+.shell[data-page='reports'] > .report-panel,
+.shell[data-page='updates'] > [aria-labelledby='notifications-title'],
+.shell[data-page='updates'] > [aria-labelledby='sharing-title'],
+.shell[data-page='updates'] > [aria-labelledby='guardian-title'],
+.shell[data-page='privacy'] > [aria-labelledby='privacy-title'],
+.shell[data-page='review'] > .dashboard-strip,
+.shell[data-page='review'] > [aria-labelledby='review-title'],
+.shell[data-page='review'] > [aria-labelledby='moderation-title'],
+.shell[data-page='review'] > [aria-labelledby='report-review-title'],
+.shell[data-page='review'] > [aria-labelledby='repair-review-title'],
+.shell[data-page='review'] > [aria-labelledby='operations-title'],
+.shell[data-page='review'] > [aria-labelledby='grievance-review-title'],
+.shell[data-page='review'] > [aria-labelledby='credential-review-title'] {
+  display: block;
+}
+.shell:not([data-page='home']) > main {
+  display: none;
+}
+.page-heading {
+  margin: 0.75rem clamp(1rem, 3vw, 3rem) 1.5rem;
+  padding: clamp(1.5rem, 4vw, 3.5rem);
+  border-radius: 1.25rem;
+  color: #f8fbf8;
+  background: linear-gradient(125deg, #18313b, #466b74);
+}
+.page-heading h1 {
+  margin: 0.25rem 0 0.6rem;
+  font: 500 clamp(2.2rem, 5vw, 4.8rem) / 1 'Manrope';
+  letter-spacing: -0.055em;
+}
+.page-heading p {
+  max-width: 720px;
+  margin-bottom: 0;
 }
 .mode-banner {
   position: sticky;
@@ -548,17 +617,40 @@ svg {
   font: 600 1.5rem/1 'Manrope';
   letter-spacing: -0.06em;
 }
+.brand-button {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
 .brand span {
   color: #d95d43;
 }
 .topbar nav {
   display: flex;
   gap: clamp(1rem, 3vw, 2.8rem);
+  max-width: min(68vw, 900px);
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 .topbar nav a,
+.topbar nav button,
 .report-link {
+  padding: 0.45rem 0.65rem;
+  border: 0;
+  border-radius: 99px;
+  color: inherit;
+  background: transparent;
   text-decoration: none;
   font-size: 0.88rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.topbar nav button.active {
+  color: white;
+  background: var(--ink);
 }
 .report-link {
   justify-self: end;
@@ -1068,10 +1160,17 @@ footer > small {
 }
 @media (max-width: 850px) {
   .topbar {
+    height: auto;
+    min-height: 72px;
     grid-template-columns: 1fr auto;
   }
   .topbar nav {
-    display: none;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: flex;
+    max-width: 100%;
+    padding: 0.2rem 0 0.75rem;
+    gap: 0.35rem;
   }
   .shade {
     background: linear-gradient(0deg, #09151dde, transparent 85%);
