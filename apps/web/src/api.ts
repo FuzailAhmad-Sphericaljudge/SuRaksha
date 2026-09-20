@@ -664,3 +664,74 @@ export async function fetchNotificationDeliveries(): Promise<
   if (!response.ok) throw new Error('Delivery history unavailable.');
   return (await response.json()) as NotificationDelivery[];
 }
+
+export type GuardianShare = {
+  id: string;
+  guardianName: string;
+  guardianEmail: string;
+  status: string;
+};
+export type SharedStudent = {
+  shareId: string;
+  studentUserId: string;
+  studentName: string;
+};
+export type GuardianSummary = {
+  studentName: string;
+  reports: Array<{
+    id: string;
+    candidateName: string;
+    category: string;
+    title: string;
+    status: string;
+    approvedEvidenceCount: number;
+  }>;
+  limitations: string;
+};
+export async function fetchGuardianShares(): Promise<GuardianShare[]> {
+  const response = await fetch('/api/sharing/mine', {
+    credentials: 'same-origin',
+    cache: 'no-store',
+  });
+  if (!response.ok) throw new Error('Sharing unavailable.');
+  return (await response.json()) as GuardianShare[];
+}
+export async function grantGuardian(guardianEmail: string) {
+  return jsonRequest('/api/sharing', 'POST', { guardianEmail });
+}
+export async function revokeGuardian(id: string) {
+  return jsonRequest(`/api/sharing/${id}/revoke`, 'POST');
+}
+export async function fetchSharedStudents(): Promise<SharedStudent[]> {
+  const response = await fetch('/api/guardian/students', {
+    credentials: 'same-origin',
+    cache: 'no-store',
+  });
+  if (!response.ok) throw new Error('Shared students unavailable.');
+  return (await response.json()) as SharedStudent[];
+}
+export async function fetchGuardianSummary(
+  studentId: string,
+): Promise<GuardianSummary> {
+  const response = await fetch(`/api/guardian/students/${studentId}/summary`, {
+    credentials: 'same-origin',
+    cache: 'no-store',
+  });
+  if (!response.ok) throw new Error('Permission no longer available.');
+  return (await response.json()) as GuardianSummary;
+}
+export async function fetchSavedProperties(): Promise<
+  Array<PropertyCandidate & { savedAt: string }>
+> {
+  const response = await fetch('/api/saved-properties', {
+    credentials: 'same-origin',
+    cache: 'no-store',
+  });
+  if (!response.ok) throw new Error('Saved properties unavailable.');
+  return (await response.json()) as Array<
+    PropertyCandidate & { savedAt: string }
+  >;
+}
+export async function saveProperty(candidateId: string) {
+  return jsonRequest(`/api/saved-properties/${candidateId}`, 'POST');
+}

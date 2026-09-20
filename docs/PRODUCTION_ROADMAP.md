@@ -151,6 +151,8 @@ Add student-approved sharing, saved properties and evidence summaries. Prevent c
 
 Done when students control access and revocation takes effect immediately.
 
+Status: complete — students can grant access only to an existing parent/guardian account and revoke it immediately. Guardians see only moderated public report summaries and approved-evidence counts, never private/confidential reports or original media. Guardian accounts can also persist a personal saved-property list.
+
 ## Phase 17 — Reviewer operations
 
 Build workload queues, service targets, assignment, escalation, reason codes and audit search for the internal team.

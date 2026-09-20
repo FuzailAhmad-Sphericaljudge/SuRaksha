@@ -139,6 +139,19 @@ export function openDatabase(path: string) {
     );
     INSERT OR IGNORE INTO schema_migrations(version, applied_at)
       VALUES (12, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    CREATE TABLE IF NOT EXISTS guardian_shares (
+      id TEXT PRIMARY KEY, student_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      guardian_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL, revoked_at TEXT,
+      UNIQUE(student_user_id, guardian_user_id)
+    );
+    CREATE TABLE IF NOT EXISTS saved_properties (
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      candidate_id TEXT NOT NULL REFERENCES property_candidates(id) ON DELETE CASCADE,
+      created_at TEXT NOT NULL, PRIMARY KEY(user_id, candidate_id)
+    );
+    INSERT OR IGNORE INTO schema_migrations(version, applied_at)
+      VALUES (13, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
   `);
   const candidateColumns = database
     .prepare('PRAGMA table_info(property_candidates)')
@@ -1202,5 +1215,119 @@ export class NotificationRepository {
         .run(success ? 'sent' : 'failed', success ? null : error, now, id)
         .changes === 1
     );
+  }
+}
+
+export class GuardianRepository {
+  constructor(private readonly database: DatabaseSync) {}
+  grant(
+    id: string,
+    studentUserId: string,
+    guardianEmail: string,
+    now: string,
+  ): boolean {
+    const guardian = this.database
+      .prepare(
+        `SELECT users.id FROM users JOIN account_profiles ON account_profiles.user_id = users.id
+      WHERE lower(users.email) = lower(?) AND account_profiles.role = 'parent_guardian'`,
+      )
+      .get(guardianEmail) as { id: string } | undefined;
+    if (!guardian || guardian.id === studentUserId) return false;
+    this.database
+      .prepare(
+        `INSERT INTO guardian_shares(id,student_user_id,guardian_user_id,status,created_at,revoked_at)
+      VALUES (?,?,?,'active',?,NULL) ON CONFLICT(student_user_id,guardian_user_id)
+      DO UPDATE SET status='active',created_at=excluded.created_at,revoked_at=NULL`,
+      )
+      .run(id, studentUserId, guardian.id, now);
+    return true;
+  }
+  revoke(id: string, studentUserId: string, now: string): boolean {
+    return (
+      this.database
+        .prepare(
+          "UPDATE guardian_shares SET status='revoked',revoked_at=? WHERE id=? AND student_user_id=? AND status='active'",
+        )
+        .run(now, id, studentUserId).changes === 1
+    );
+  }
+  listForStudent(studentUserId: string) {
+    return this.database
+      .prepare(
+        `SELECT guardian_shares.id, users.display_name AS guardianName, users.email AS guardianEmail,
+      status, guardian_shares.created_at AS createdAt, revoked_at AS revokedAt
+      FROM guardian_shares JOIN users ON users.id=guardian_shares.guardian_user_id
+      WHERE student_user_id=? ORDER BY guardian_shares.created_at DESC`,
+      )
+      .all(studentUserId);
+  }
+  sharedStudents(guardianUserId: string) {
+    return this.database
+      .prepare(
+        `SELECT guardian_shares.id AS shareId, users.id AS studentUserId, users.display_name AS studentName,
+      guardian_shares.created_at AS sharedAt
+      FROM guardian_shares JOIN users ON users.id=guardian_shares.student_user_id
+      WHERE guardian_user_id=? AND status='active' ORDER BY sharedAt DESC`,
+      )
+      .all(guardianUserId);
+  }
+  summary(guardianUserId: string, studentUserId: string) {
+    const access = this.database
+      .prepare(
+        "SELECT 1 FROM guardian_shares WHERE guardian_user_id=? AND student_user_id=? AND status='active'",
+      )
+      .get(guardianUserId, studentUserId);
+    if (!access) return null;
+    const student = this.database
+      .prepare('SELECT display_name AS studentName FROM users WHERE id=?')
+      .get(studentUserId);
+    const reports = this.database
+      .prepare(
+        `SELECT issue_reports.id, property_candidates.name AS candidateName, category, title, status,
+      issue_reports.created_at AS createdAt,
+      SUM(CASE WHEN evidence_uploads.moderation_status='approved' THEN 1 ELSE 0 END) AS approvedEvidenceCount
+      FROM issue_reports JOIN property_candidates ON property_candidates.id=issue_reports.candidate_id
+      LEFT JOIN report_evidence ON report_evidence.report_id=issue_reports.id
+      LEFT JOIN evidence_uploads ON evidence_uploads.id=report_evidence.evidence_id
+      WHERE reporter_user_id=? AND visibility='public_redacted' AND issue_reports.status IN ('approved','resolved')
+      GROUP BY issue_reports.id ORDER BY issue_reports.created_at DESC`,
+      )
+      .all(studentUserId);
+    return {
+      ...student,
+      reports,
+      limitations:
+        'Only moderated public report summaries are shared. Original media and private reports remain hidden.',
+    };
+  }
+  saveProperty(userId: string, candidateId: string, now: string): boolean {
+    try {
+      this.database
+        .prepare(
+          'INSERT OR IGNORE INTO saved_properties(user_id,candidate_id,created_at) VALUES (?,?,?)',
+        )
+        .run(userId, candidateId, now);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  removeProperty(userId: string, candidateId: string): boolean {
+    return (
+      this.database
+        .prepare(
+          'DELETE FROM saved_properties WHERE user_id=? AND candidate_id=?',
+        )
+        .run(userId, candidateId).changes === 1
+    );
+  }
+  savedProperties(userId: string) {
+    return this.database
+      .prepare(
+        `SELECT property_candidates.id,name,locality,property_type AS propertyType,saved_properties.created_at AS savedAt
+      FROM saved_properties JOIN property_candidates ON property_candidates.id=saved_properties.candidate_id
+      WHERE user_id=? ORDER BY savedAt DESC`,
+      )
+      .all(userId);
   }
 }

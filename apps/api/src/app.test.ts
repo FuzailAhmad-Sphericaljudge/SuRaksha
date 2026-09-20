@@ -859,6 +859,140 @@ describe('API foundation', () => {
     database.close();
   });
 
+  it('gives students immediate control over guardian sharing', async () => {
+    const database = openDatabase(':memory:');
+    const app = createApp({ mode: 'demo', database });
+    apps.push(app);
+    const student = await app.inject({
+      method: 'POST',
+      url: '/api/auth/register',
+      payload: {
+        displayName: 'Sharing Student',
+        email: 'share-student@test.local',
+        password: 'safe-password',
+      },
+    });
+    const parent = await app.inject({
+      method: 'POST',
+      url: '/api/auth/register',
+      payload: {
+        displayName: 'Sharing Parent',
+        email: 'share-parent@test.local',
+        password: 'safe-password',
+      },
+    });
+    const studentCookie = student.headers['set-cookie'];
+    const parentCookie = parent.headers['set-cookie'];
+    await app.inject({
+      method: 'POST',
+      url: '/api/onboarding',
+      headers: { cookie: studentCookie },
+      payload: { role: 'student' },
+    });
+    await app.inject({
+      method: 'POST',
+      url: '/api/onboarding',
+      headers: { cookie: parentCookie },
+      payload: { role: 'parent_guardian' },
+    });
+    const candidate = await app.inject({
+      method: 'POST',
+      url: '/api/candidates',
+      headers: { cookie: studentCookie },
+      payload: {
+        name: 'Shared Hostel',
+        locality: 'Kota Rajasthan',
+        propertyType: 'hostel',
+      },
+    });
+    const studentId = student.json().user.id;
+    database
+      .prepare(
+        'INSERT INTO issue_reports(id,candidate_id,building_id,reporter_user_id,category,title,description,visibility,status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
+      )
+      .run(
+        '50000000-0000-4000-8000-000000000001',
+        candidate.json().id,
+        null,
+        studentId,
+        'sanitation',
+        'Shared public concern',
+        'A moderated concern visible in guardian summary.',
+        'public_redacted',
+        'approved',
+        '2026-09-20T00:00:00Z',
+      );
+    database
+      .prepare(
+        'INSERT INTO issue_reports(id,candidate_id,building_id,reporter_user_id,category,title,description,visibility,status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
+      )
+      .run(
+        '50000000-0000-4000-8000-000000000002',
+        candidate.json().id,
+        null,
+        studentId,
+        'other_safety',
+        'Private concern',
+        'This confidential detail must remain hidden.',
+        'confidential',
+        'approved',
+        '2026-09-20T00:00:00Z',
+      );
+    const share = await app.inject({
+      method: 'POST',
+      url: '/api/sharing',
+      headers: { cookie: studentCookie },
+      payload: { guardianEmail: 'share-parent@test.local' },
+    });
+    expect(share.statusCode).toBe(201);
+    const students = await app.inject({
+      url: '/api/guardian/students',
+      headers: { cookie: parentCookie },
+    });
+    expect(students.json()).toHaveLength(1);
+    const summary = await app.inject({
+      url: `/api/guardian/students/${studentId}/summary`,
+      headers: { cookie: parentCookie },
+    });
+    expect(summary.json().reports).toHaveLength(1);
+    expect(summary.body).not.toContain('Private concern');
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: `/api/saved-properties/${candidate.json().id}`,
+          headers: { cookie: parentCookie },
+        })
+      ).statusCode,
+    ).toBe(201);
+    expect(
+      (
+        await app.inject({
+          url: '/api/saved-properties',
+          headers: { cookie: parentCookie },
+        })
+      ).json(),
+    ).toHaveLength(1);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: `/api/sharing/${share.json().id}/revoke`,
+          headers: { cookie: studentCookie },
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(
+      (
+        await app.inject({
+          url: `/api/guardian/students/${studentId}/summary`,
+          headers: { cookie: parentCookie },
+        })
+      ).statusCode,
+    ).toBe(403);
+    database.close();
+  });
+
   it('rejects duplicate registration and incorrect passwords', async () => {
     const database = openDatabase(':memory:');
     const app = createApp({ mode: 'demo', database });

@@ -53,6 +53,13 @@ import {
   fetchNotificationPreferences,
   saveNotificationPreferences,
   fetchNotificationDeliveries,
+  fetchGuardianShares,
+  grantGuardian,
+  revokeGuardian,
+  fetchSharedStudents,
+  fetchGuardianSummary,
+  fetchSavedProperties,
+  saveProperty,
   loginDemoAccount,
   logoutDemoAccount,
   registerDemoAccount,
@@ -72,6 +79,9 @@ import {
   type AppNotification,
   type NotificationPreferences,
   type NotificationDelivery,
+  type GuardianShare,
+  type SharedStudent,
+  type GuardianSummary,
 } from './api';
 import './styles.css';
 
@@ -161,6 +171,13 @@ function App() {
   const [notificationDeliveries, setNotificationDeliveries] = useState<
     NotificationDelivery[]
   >([]);
+  const [guardianShares, setGuardianShares] = useState<GuardianShare[]>([]);
+  const [sharedStudents, setSharedStudents] = useState<SharedStudent[]>([]);
+  const [guardianSummary, setGuardianSummary] =
+    useState<GuardianSummary | null>(null);
+  const [savedProperties, setSavedProperties] = useState<PropertyCandidate[]>(
+    [],
+  );
   const [query, setQuery] = useState('');
   const [message, setMessage] = useState(
     'Search is a visual preview. No live properties are indexed.',
@@ -225,6 +242,12 @@ function App() {
     if (session.authenticated && session.profile?.role === 'professional') {
       void fetchCredentials().then(setCredentials);
       void fetchInspections().then(setInspections);
+    }
+    if (session.authenticated && session.profile?.role === 'student')
+      void fetchGuardianShares().then(setGuardianShares);
+    if (session.authenticated && session.profile?.role === 'parent_guardian') {
+      void fetchSharedStudents().then(setSharedStudents);
+      void fetchSavedProperties().then(setSavedProperties);
     }
   }, [session]);
 
@@ -690,6 +713,33 @@ function App() {
   async function readNotification(id: string) {
     await markNotificationRead(id);
     setNotifications(await fetchNotifications());
+  }
+
+  async function submitGuardianShare(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    try {
+      await grantGuardian(String(new FormData(form).get('guardianEmail')));
+      setGuardianShares(await fetchGuardianShares());
+      form.reset();
+    } catch (error) {
+      setReportMessage(
+        error instanceof Error ? error.message : 'Sharing failed.',
+      );
+    }
+  }
+  async function revokeShare(id: string) {
+    await revokeGuardian(id);
+    setGuardianShares(await fetchGuardianShares());
+  }
+  async function openGuardianSummary(studentId: string) {
+    try {
+      setGuardianSummary(await fetchGuardianSummary(studentId));
+    } catch (error) {
+      setReportMessage(
+        error instanceof Error ? error.message : 'Access unavailable.',
+      );
+    }
   }
 
   return (
@@ -1177,6 +1227,84 @@ function App() {
             </div>
           </section>
         )}
+      {session.authenticated && session.profile?.role === 'student' && (
+        <section className="claim-panel" aria-labelledby="sharing-title">
+          <div>
+            <p className="kicker">Student-controlled access</p>
+            <h2 id="sharing-title">Share with a parent or guardian</h2>
+            <p>
+              The guardian must already have a parent account. You can revoke
+              access immediately.
+            </p>
+          </div>
+          <form onSubmit={submitGuardianShare}>
+            <input
+              name="guardianEmail"
+              type="email"
+              required
+              placeholder="guardian@example.com"
+            />
+            <button type="submit">Grant access</button>
+          </form>
+          <div className="claim-list">
+            {guardianShares.map((share) => (
+              <article key={share.id}>
+                <span>{share.status}</span>
+                <strong>{share.guardianName}</strong>
+                <p>{share.guardianEmail}</p>
+                {share.status === 'active' && (
+                  <button onClick={() => void revokeShare(share.id)}>
+                    Revoke access
+                  </button>
+                )}
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+      {session.authenticated && session.profile?.role === 'parent_guardian' && (
+        <section className="claim-panel" aria-labelledby="guardian-title">
+          <div>
+            <p className="kicker">Guardian view</p>
+            <h2 id="guardian-title">Student-approved summaries</h2>
+            <p>Original evidence and private reports are never included.</p>
+          </div>
+          <div className="claim-list">
+            {sharedStudents.map((student) => (
+              <article key={student.shareId}>
+                <strong>{student.studentName}</strong>
+                <button
+                  onClick={() =>
+                    void openGuardianSummary(student.studentUserId)
+                  }
+                >
+                  View summary
+                </button>
+              </article>
+            ))}
+          </div>
+          {guardianSummary && (
+            <div className="claim-list">
+              <p>{guardianSummary.limitations}</p>
+              {guardianSummary.reports.map((report) => (
+                <article key={report.id}>
+                  <span>{report.status}</span>
+                  <strong>
+                    {report.candidateName} · {report.title}
+                  </strong>
+                  <p>
+                    {report.category.replaceAll('_', ' ')} ·{' '}
+                    {report.approvedEvidenceCount} approved evidence items
+                  </p>
+                </article>
+              ))}
+            </div>
+          )}
+          <p>
+            <small>{savedProperties.length} saved properties</small>
+          </p>
+        </section>
+      )}
       {session.authenticated && (
         <section className="claim-panel" aria-labelledby="evidence-title">
           <div>
@@ -1574,6 +1702,19 @@ function App() {
                   >
                     View evidence profile
                   </button>
+                  {session.authenticated &&
+                    session.profile?.role === 'parent_guardian' && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void saveProperty(candidate.id).then(() =>
+                            fetchSavedProperties().then(setSavedProperties),
+                          )
+                        }
+                      >
+                        Save property
+                      </button>
+                    )}
                 </article>
               ))
             )}

@@ -25,6 +25,7 @@ import {
   RepairRepository,
   InspectionRepository,
   NotificationRepository,
+  GuardianRepository,
   PropertyCandidateRepository,
 } from './database.js';
 import {
@@ -221,6 +222,9 @@ export function createApp(options: AppOptions = {}) {
     .refine((value) => !value.smsEnabled || value.phoneNumber, {
       message: 'A phone number is required for SMS.',
     });
+  const guardianGrantSchema = z.strictObject({
+    guardianEmail: z.email().max(320),
+  });
   app.register(fastifyMultipart, {
     limits: { files: 1, fileSize: 50_000_000, fields: 4 },
   });
@@ -640,6 +644,193 @@ export function createApp(options: AppOptions = {}) {
           });
     },
   );
+
+  app.get('/api/sharing/mine', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user)
+      return reply.code(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Sign-in is required.',
+          requestId: request.id,
+        },
+      });
+    return database
+      ? new GuardianRepository(database).listForStudent(user.id)
+      : [];
+  });
+  app.post('/api/sharing', async (request, reply) => {
+    const user = currentUser(request.headers);
+    const parsed = guardianGrantSchema.safeParse(request.body);
+    const profile =
+      user && database
+        ? new AccountProfileRepository(database).get(user.id)
+        : null;
+    if (!user)
+      return reply.code(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Sign-in is required.',
+          requestId: request.id,
+        },
+      });
+    if (!database || !parsed.success || profile?.role !== 'student')
+      return reply.code(403).send({
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Only students can grant guardian access.',
+          requestId: request.id,
+        },
+      });
+    const id = randomUUID();
+    return new GuardianRepository(database).grant(
+      id,
+      user.id,
+      parsed.data.guardianEmail,
+      now().toISOString(),
+    )
+      ? reply.code(201).send({ id, status: 'active' })
+      : reply.code(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Registered parent or guardian not found.',
+            requestId: request.id,
+          },
+        });
+  });
+  app.post('/api/sharing/:id/revoke', async (request, reply) => {
+    const user = currentUser(request.headers);
+    const id = z.uuid().safeParse((request.params as { id?: unknown }).id);
+    if (!user || !database || !id.success)
+      return reply.code(404).send({
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Active share not found.',
+          requestId: request.id,
+        },
+      });
+    return new GuardianRepository(database).revoke(
+      id.data,
+      user.id,
+      now().toISOString(),
+    )
+      ? { status: 'revoked' }
+      : reply.code(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Active share not found.',
+            requestId: request.id,
+          },
+        });
+  });
+  app.get('/api/guardian/students', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user)
+      return reply.code(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Sign-in is required.',
+          requestId: request.id,
+        },
+      });
+    return database
+      ? new GuardianRepository(database).sharedStudents(user.id)
+      : [];
+  });
+  app.get(
+    '/api/guardian/students/:studentId/summary',
+    async (request, reply) => {
+      const user = currentUser(request.headers);
+      const studentId = z
+        .uuid()
+        .safeParse((request.params as { studentId?: unknown }).studentId);
+      if (!user || !database || !studentId.success)
+        return reply.code(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Shared summary not found.',
+            requestId: request.id,
+          },
+        });
+      return (
+        new GuardianRepository(database).summary(user.id, studentId.data) ??
+        reply.code(403).send({
+          error: {
+            code: 'FORBIDDEN',
+            message: 'Student permission is required.',
+            requestId: request.id,
+          },
+        })
+      );
+    },
+  );
+  app.get('/api/saved-properties', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user)
+      return reply.code(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Sign-in is required.',
+          requestId: request.id,
+        },
+      });
+    return database
+      ? new GuardianRepository(database).savedProperties(user.id)
+      : [];
+  });
+  app.post('/api/saved-properties/:candidateId', async (request, reply) => {
+    const user = currentUser(request.headers);
+    const candidateId = z
+      .uuid()
+      .safeParse((request.params as { candidateId?: unknown }).candidateId);
+    if (!user || !database || !candidateId.success)
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Valid property required.',
+          requestId: request.id,
+        },
+      });
+    return new GuardianRepository(database).saveProperty(
+      user.id,
+      candidateId.data,
+      now().toISOString(),
+    )
+      ? reply.code(201).send({ status: 'saved' })
+      : reply.code(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Property not found.',
+            requestId: request.id,
+          },
+        });
+  });
+  app.delete('/api/saved-properties/:candidateId', async (request, reply) => {
+    const user = currentUser(request.headers);
+    const candidateId = z
+      .uuid()
+      .safeParse((request.params as { candidateId?: unknown }).candidateId);
+    if (!user || !database || !candidateId.success)
+      return reply.code(404).send({
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Saved property not found.',
+          requestId: request.id,
+        },
+      });
+    return new GuardianRepository(database).removeProperty(
+      user.id,
+      candidateId.data,
+    )
+      ? reply.code(204).send()
+      : reply.code(404).send({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Saved property not found.',
+            requestId: request.id,
+          },
+        });
+  });
 
   app.get('/api/buildings/mine', async (request, reply) => {
     const user = currentUser(request.headers);
