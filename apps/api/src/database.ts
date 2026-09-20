@@ -172,6 +172,23 @@ export function openDatabase(path: string) {
     CREATE INDEX IF NOT EXISTS idx_candidates_locality ON property_candidates(locality);
     INSERT OR IGNORE INTO schema_migrations(version, applied_at)
       VALUES (15, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    CREATE TABLE IF NOT EXISTS consent_receipts (
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      notice_version TEXT NOT NULL, accepted_at TEXT NOT NULL,
+      PRIMARY KEY(user_id,notice_version)
+    );
+    CREATE TABLE IF NOT EXISTS privacy_requests (
+      id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),request_type TEXT NOT NULL,
+      reason TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'submitted',created_at TEXT NOT NULL,resolved_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS grievances (
+      id TEXT PRIMARY KEY,reporter_user_id TEXT NOT NULL REFERENCES users(id),
+      entity_type TEXT NOT NULL,entity_id TEXT NOT NULL,category TEXT NOT NULL,details TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'submitted',review_reason TEXT,created_at TEXT NOT NULL,resolved_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_grievances_status ON grievances(status,created_at);
+    INSERT OR IGNORE INTO schema_migrations(version, applied_at)
+      VALUES (16, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
   `);
   const candidateColumns = database
     .prepare('PRAGMA table_info(property_candidates)')
@@ -1383,6 +1400,14 @@ export class ReviewerOperationsRepository {
         type: 'repair',
         sql: "SELECT report_id AS id, 'Repair reinspection' AS title FROM issue_repairs WHERE status='reinspection_requested'",
       },
+      {
+        type: 'grievance',
+        sql: "SELECT id, 'Privacy or takedown grievance' AS title FROM grievances WHERE status='submitted'",
+      },
+      {
+        type: 'privacy_request',
+        sql: "SELECT id, 'Account privacy request' AS title FROM privacy_requests WHERE status='submitted'",
+      },
     ];
     for (const source of sources)
       for (const row of this.database.prepare(source.sql).all() as Array<{
@@ -1598,5 +1623,120 @@ export class AnalyticsRepository {
       })),
       backlog,
     };
+  }
+}
+
+export class PrivacyRepository {
+  constructor(private readonly database: DatabaseSync) {}
+  consent(userId: string) {
+    return this.database
+      .prepare(
+        'SELECT notice_version AS noticeVersion,accepted_at AS acceptedAt FROM consent_receipts WHERE user_id=? ORDER BY accepted_at DESC',
+      )
+      .all(userId);
+  }
+  acceptConsent(userId: string, version: string, now: string) {
+    this.database
+      .prepare(
+        'INSERT OR IGNORE INTO consent_receipts(user_id,notice_version,accepted_at) VALUES (?,?,?)',
+      )
+      .run(userId, version, now);
+  }
+  requestDeletion(id: string, userId: string, reason: string, now: string) {
+    this.database
+      .prepare(
+        "INSERT INTO privacy_requests(id,user_id,request_type,reason,status,created_at) VALUES (?,?,'account_deletion',?,'submitted',?)",
+      )
+      .run(id, userId, reason, now);
+  }
+  exportAccount(userId: string) {
+    const user = this.database
+      .prepare(
+        'SELECT id,email,display_name AS displayName,created_at AS createdAt FROM users WHERE id=?',
+      )
+      .get(userId);
+    const profile =
+      this.database
+        .prepare(
+          'SELECT role,review_status AS reviewStatus,updated_at AS updatedAt FROM account_profiles WHERE user_id=?',
+        )
+        .get(userId) ?? null;
+    return {
+      exportedAt: new Date().toISOString(),
+      user,
+      profile,
+      consent: this.consent(userId),
+      candidates: this.database
+        .prepare(
+          'SELECT id,name,locality,property_type AS propertyType,source,created_at AS createdAt FROM property_candidates WHERE source=?',
+        )
+        .all(`user:${userId}`),
+      reports: this.database
+        .prepare(
+          'SELECT id,candidate_id AS candidateId,category,title,description,visibility,status,created_at AS createdAt FROM issue_reports WHERE reporter_user_id=?',
+        )
+        .all(userId),
+      evidence: this.database
+        .prepare(
+          'SELECT id,original_name AS originalName,media_type AS mediaType,byte_size AS byteSize,moderation_status AS moderationStatus,created_at AS createdAt FROM evidence_uploads WHERE user_id=?',
+        )
+        .all(userId),
+      sharesGranted: this.database
+        .prepare(
+          'SELECT id,guardian_user_id AS guardianUserId,status,created_at AS createdAt,revoked_at AS revokedAt FROM guardian_shares WHERE student_user_id=?',
+        )
+        .all(userId),
+      privacyRequests: this.database
+        .prepare(
+          'SELECT id,request_type AS requestType,reason,status,created_at AS createdAt,resolved_at AS resolvedAt FROM privacy_requests WHERE user_id=?',
+        )
+        .all(userId),
+    };
+  }
+  submitGrievance(input: {
+    id: string;
+    userId: string;
+    entityType: string;
+    entityId: string;
+    category: string;
+    details: string;
+    now: string;
+  }) {
+    this.database
+      .prepare(
+        "INSERT INTO grievances(id,reporter_user_id,entity_type,entity_id,category,details,status,created_at) VALUES (?,?,?,?,?,?,'submitted',?)",
+      )
+      .run(
+        input.id,
+        input.userId,
+        input.entityType,
+        input.entityId,
+        input.category,
+        input.details,
+        input.now,
+      );
+  }
+  grievances(userId?: string) {
+    return this.database
+      .prepare(
+        `SELECT id,reporter_user_id AS reporterUserId,entity_type AS entityType,entity_id AS entityId,
+      category,details,status,review_reason AS reviewReason,created_at AS createdAt,resolved_at AS resolvedAt
+      FROM grievances WHERE (? IS NULL OR reporter_user_id=?) ORDER BY created_at DESC`,
+      )
+      .all(userId ?? null, userId ?? null);
+  }
+  decideGrievance(
+    id: string,
+    status: 'actioned' | 'dismissed',
+    reason: string,
+    now: string,
+  ): boolean {
+    return (
+      this.database
+        .prepare(
+          "UPDATE grievances SET status=?,review_reason=?,resolved_at=? WHERE id=? AND status='submitted'",
+        )
+        .run(status, reason, now, id).changes === 1
+    );
   }
 }

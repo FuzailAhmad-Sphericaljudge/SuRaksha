@@ -814,3 +814,56 @@ export async function fetchAnalytics(): Promise<AnalyticsSnapshot> {
   if (!response.ok) throw new Error('Analytics unavailable.');
   return (await response.json()) as AnalyticsSnapshot;
 }
+
+export type Grievance = {
+  id: string;
+  entityType: string;
+  entityId: string;
+  category: string;
+  details: string;
+  status: string;
+  reviewReason: string | null;
+};
+export async function acceptPrivacyNotice() {
+  return jsonRequest('/api/privacy/consent', 'POST', {
+    noticeVersion: '2026-09-20',
+    accepted: true,
+  });
+}
+export async function requestAccountDeletion(reason: string) {
+  return jsonRequest('/api/privacy/deletion-requests', 'POST', { reason });
+}
+export async function submitGrievance(input: {
+  entityType: string;
+  entityId: string;
+  category: string;
+  details: string;
+}) {
+  return jsonRequest('/api/grievances', 'POST', input);
+}
+export async function fetchMyGrievances(): Promise<Grievance[]> {
+  const response = await fetch('/api/grievances/mine', {
+    credentials: 'same-origin',
+    cache: 'no-store',
+  });
+  if (!response.ok) throw new Error('Grievances unavailable.');
+  return (await response.json()) as Grievance[];
+}
+export async function fetchReviewerGrievances(): Promise<Grievance[]> {
+  const response = await fetch('/api/reviewer/grievances', {
+    credentials: 'same-origin',
+    cache: 'no-store',
+  });
+  if (!response.ok) throw new Error('Grievance queue unavailable.');
+  return (await response.json()) as Grievance[];
+}
+export async function decideGrievance(
+  id: string,
+  status: 'actioned' | 'dismissed',
+  reason: string,
+) {
+  return jsonRequest(`/api/reviewer/grievances/${id}/decision`, 'POST', {
+    status,
+    reason,
+  });
+}

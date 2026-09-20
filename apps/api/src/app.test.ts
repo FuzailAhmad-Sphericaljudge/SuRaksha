@@ -545,6 +545,60 @@ describe('API foundation', () => {
         })
       ).json().status,
     ).toBe('sent');
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/privacy/consent',
+          headers: { cookie: registration.headers['set-cookie'] },
+          payload: { noticeVersion: '2026-09-20', accepted: true },
+        })
+      ).statusCode,
+    ).toBe(201);
+    const accountExport = await app.inject({
+      url: '/api/privacy/export',
+      headers: { cookie: registration.headers['set-cookie'] },
+    });
+    expect(accountExport.statusCode).toBe(200);
+    expect(accountExport.body).not.toContain('password_hash');
+    expect(accountExport.body).not.toContain('storage_key');
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/privacy/deletion-requests',
+          headers: { cookie: registration.headers['set-cookie'] },
+          payload: {
+            reason: 'Please remove this demo account and its personal data.',
+          },
+        })
+      ).statusCode,
+    ).toBe(202);
+    const grievance = await app.inject({
+      method: 'POST',
+      url: '/api/grievances',
+      headers: { cookie: registration.headers['set-cookie'] },
+      payload: {
+        entityType: 'property',
+        entityId: candidate.json().id,
+        category: 'misinformation',
+        details: 'The public locality information needs correction and review.',
+      },
+    });
+    expect(grievance.statusCode).toBe(201);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: `/api/reviewer/grievances/${grievance.json().id}/decision`,
+          headers: { cookie: reviewerCookie },
+          payload: {
+            status: 'actioned',
+            reason: 'Correction request accepted for operational follow-up.',
+          },
+        })
+      ).statusCode,
+    ).toBe(200);
     const building = await app.inject({
       method: 'POST',
       url: '/api/buildings',

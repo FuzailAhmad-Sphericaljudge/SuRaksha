@@ -64,6 +64,12 @@ import {
   updateReviewTask,
   searchAudit,
   fetchAnalytics,
+  acceptPrivacyNotice,
+  requestAccountDeletion,
+  submitGrievance,
+  fetchMyGrievances,
+  fetchReviewerGrievances,
+  decideGrievance,
   loginDemoAccount,
   logoutDemoAccount,
   registerDemoAccount,
@@ -89,6 +95,7 @@ import {
   type ReviewTask,
   type AuditEvent,
   type AnalyticsSnapshot,
+  type Grievance,
 } from './api';
 import './styles.css';
 
@@ -188,6 +195,9 @@ function App() {
   const [reviewTasks, setReviewTasks] = useState<ReviewTask[]>([]);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [analytics, setAnalytics] = useState<AnalyticsSnapshot | null>(null);
+  const [grievances, setGrievances] = useState<Grievance[]>([]);
+  const [reviewGrievances, setReviewGrievances] = useState<Grievance[]>([]);
+  const [privacyMessage, setPrivacyMessage] = useState('');
   const [query, setQuery] = useState('');
   const [message, setMessage] = useState(
     'Search is a visual preview. No live properties are indexed.',
@@ -226,6 +236,7 @@ function App() {
       void fetchNotifications().then(setNotifications);
       void fetchNotificationPreferences().then(setNotificationPreferences);
       void fetchNotificationDeliveries().then(setNotificationDeliveries);
+      void fetchMyGrievances().then(setGrievances);
     }
     if (session.authenticated && session.profile?.role === 'owner_manager') {
       void fetchMyClaims()
@@ -251,6 +262,7 @@ function App() {
       void fetchReviewTasks().then(setReviewTasks);
       void searchAudit().then(setAuditEvents);
       void fetchAnalytics().then(setAnalytics);
+      void fetchReviewerGrievances().then(setReviewGrievances);
     }
     if (session.authenticated && session.profile?.role === 'professional') {
       void fetchCredentials().then(setCredentials);
@@ -775,6 +787,32 @@ function App() {
     });
     setReviewTasks(await fetchReviewTasks());
     setAuditEvents(await searchAudit());
+  }
+  async function fileGrievance(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    try {
+      await submitGrievance({
+        entityType: String(data.get('entityType')),
+        entityId: String(data.get('entityId')),
+        category: String(data.get('category')),
+        details: String(data.get('details')),
+      });
+      setGrievances(await fetchMyGrievances());
+      setPrivacyMessage('Grievance submitted for review.');
+      form.reset();
+    } catch (error) {
+      setPrivacyMessage(
+        error instanceof Error ? error.message : 'Submission failed.',
+      );
+    }
+  }
+  async function reviewGrievance(id: string, status: 'actioned' | 'dismissed') {
+    const reason = window.prompt('Decision reason:');
+    if (!reason) return;
+    await decideGrievance(id, status, reason);
+    setReviewGrievances(await fetchReviewerGrievances());
   }
 
   return (
@@ -1422,6 +1460,121 @@ function App() {
           </p>
         </section>
       )}
+      {session.authenticated && (
+        <section className="claim-panel" aria-labelledby="privacy-title">
+          <div>
+            <p className="kicker">Privacy centre</p>
+            <h2 id="privacy-title">Consent, export and corrections</h2>
+            <p>
+              Your export excludes passwords, session tokens and private storage
+              paths.
+            </p>
+          </div>
+          <div className="decision-actions">
+            <button
+              onClick={() =>
+                void acceptPrivacyNotice().then(() =>
+                  setPrivacyMessage('Privacy notice accepted.'),
+                )
+              }
+            >
+              Accept current notice
+            </button>
+            <a href="/api/privacy/export">Download my data</a>
+            <button
+              onClick={() => {
+                const reason = window.prompt(
+                  'Why do you want account deletion?',
+                );
+                if (reason)
+                  void requestAccountDeletion(reason).then(() =>
+                    setPrivacyMessage('Deletion request submitted.'),
+                  );
+              }}
+            >
+              Request deletion
+            </button>
+          </div>
+          <form onSubmit={fileGrievance}>
+            <select name="entityType" defaultValue="property">
+              <option value="property">Property</option>
+              <option value="report">Report</option>
+              <option value="evidence">Evidence</option>
+              <option value="profile">Profile</option>
+            </select>
+            <input name="entityId" required placeholder="Record ID" />
+            <select name="category" defaultValue="misinformation">
+              <option value="privacy">Privacy</option>
+              <option value="misinformation">Misinformation</option>
+              <option value="harassment">Harassment</option>
+              <option value="copyright">Copyright</option>
+              <option value="safety">Safety</option>
+              <option value="other">Other</option>
+            </select>
+            <input
+              name="details"
+              minLength={20}
+              required
+              placeholder="Explain the correction or concern"
+            />
+            <button type="submit">Submit grievance</button>
+          </form>
+          <div className="claim-list">
+            {grievances.map((item) => (
+              <article key={item.id}>
+                <span>{item.status}</span>
+                <strong>
+                  {item.category} · {item.entityType}
+                </strong>
+                <p>{item.details}</p>
+              </article>
+            ))}
+          </div>
+          {privacyMessage && <p role="status">{privacyMessage}</p>}
+        </section>
+      )}
+      {session.authenticated &&
+        session.user.email === 'reviewer@suraksha.demo' &&
+        reviewGrievances.length > 0 && (
+          <section
+            className="claim-panel"
+            aria-labelledby="grievance-review-title"
+          >
+            <div>
+              <p className="kicker">Takedown and grievance queue</p>
+              <h2 id="grievance-review-title">Privacy review</h2>
+            </div>
+            <div className="claim-list">
+              {reviewGrievances.map((item) => (
+                <article key={item.id}>
+                  <span>{item.status}</span>
+                  <strong>
+                    {item.category} · {item.entityType}
+                  </strong>
+                  <p>{item.details}</p>
+                  {item.status === 'submitted' && (
+                    <div className="decision-actions">
+                      <button
+                        onClick={() =>
+                          void reviewGrievance(item.id, 'actioned')
+                        }
+                      >
+                        Action
+                      </button>
+                      <button
+                        onClick={() =>
+                          void reviewGrievance(item.id, 'dismissed')
+                        }
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  )}
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
       {session.authenticated && (
         <section className="claim-panel" aria-labelledby="evidence-title">
           <div>

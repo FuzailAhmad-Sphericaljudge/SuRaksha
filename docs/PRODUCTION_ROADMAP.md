@@ -175,6 +175,8 @@ Complete consent, redaction, retention/deletion, account export, takedown, griev
 
 Done when privacy and abuse scenarios pass and production data sources have documented permission.
 
+Status: partial — versioned consent, privacy-safe JSON export, deletion requests, grievances/takedowns, reviewer decisions, audit records and per-user grievance throttling are working. Original evidence remains private and public derivatives are intentionally unavailable. Threat, governance and third-party licensing registers document production requirements; automatic retention purge, edge rate limiting, malware scanning and legal sign-off remain deployment blockers.
+
 ## Phase 20 — Accessibility, performance and recovery
 
 Test keyboard/screen-reader flows, mobile networks, image budgets, database indexes, backups, restore drills, observability and failure recovery.

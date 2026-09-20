@@ -28,6 +28,7 @@ import {
   GuardianRepository,
   ReviewerOperationsRepository,
   AnalyticsRepository,
+  PrivacyRepository,
   PropertyCandidateRepository,
 } from './database.js';
 import {
@@ -263,6 +264,30 @@ export function createApp(options: AppOptions = {}) {
     ]),
     note: z.string().trim().min(10).max(1000),
   });
+  const grievanceSchema = z.strictObject({
+    entityType: z.enum(['property', 'report', 'evidence', 'profile']),
+    entityId: z.string().trim().min(3).max(200),
+    category: z.enum([
+      'privacy',
+      'misinformation',
+      'harassment',
+      'copyright',
+      'safety',
+      'other',
+    ]),
+    details: z.string().trim().min(20).max(4000),
+  });
+  const submissionAttempts = new Map<string, number[]>();
+  const withinRateLimit = (key: string) => {
+    const cutoff = now().getTime() - 60 * 60 * 1000;
+    const recent = (submissionAttempts.get(key) ?? []).filter(
+      (time) => time > cutoff,
+    );
+    if (recent.length >= 10) return false;
+    recent.push(now().getTime());
+    submissionAttempts.set(key, recent);
+    return true;
+  };
   app.register(fastifyMultipart, {
     limits: { files: 1, fileSize: 50_000_000, fields: 4 },
   });
@@ -999,6 +1024,209 @@ export function createApp(options: AppOptions = {}) {
           error: {
             code: 'DATABASE_UNAVAILABLE',
             message: 'Analytics are unavailable.',
+            requestId: request.id,
+          },
+        });
+  });
+
+  app.get('/api/privacy/consent', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user)
+      return reply.code(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Sign-in is required.',
+          requestId: request.id,
+        },
+      });
+    return {
+      currentVersion: '2026-09-20',
+      receipts: database
+        ? new PrivacyRepository(database).consent(user.id)
+        : [],
+    };
+  });
+  app.post('/api/privacy/consent', async (request, reply) => {
+    const user = currentUser(request.headers);
+    const parsed = z
+      .strictObject({
+        noticeVersion: z.literal('2026-09-20'),
+        accepted: z.literal(true),
+      })
+      .safeParse(request.body);
+    if (!user)
+      return reply.code(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Sign-in is required.',
+          requestId: request.id,
+        },
+      });
+    if (!database || !parsed.success)
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Current privacy notice acceptance is required.',
+          requestId: request.id,
+        },
+      });
+    new PrivacyRepository(database).acceptConsent(
+      user.id,
+      parsed.data.noticeVersion,
+      now().toISOString(),
+    );
+    return reply.code(201).send({ status: 'accepted' });
+  });
+  app.get('/api/privacy/export', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user || !database)
+      return reply.code(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Sign-in is required.',
+          requestId: request.id,
+        },
+      });
+    reply.header(
+      'Content-Disposition',
+      'attachment; filename="suraksha-account-export.json"',
+    );
+    return new PrivacyRepository(database).exportAccount(user.id);
+  });
+  app.post('/api/privacy/deletion-requests', async (request, reply) => {
+    const user = currentUser(request.headers);
+    const parsed = z
+      .strictObject({ reason: z.string().trim().min(10).max(1000) })
+      .safeParse(request.body);
+    if (!user || !database)
+      return reply.code(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Sign-in is required.',
+          requestId: request.id,
+        },
+      });
+    if (!parsed.success)
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'A deletion reason is required.',
+          requestId: request.id,
+        },
+      });
+    new PrivacyRepository(database).requestDeletion(
+      randomUUID(),
+      user.id,
+      parsed.data.reason,
+      now().toISOString(),
+    );
+    return reply.code(202).send({ status: 'submitted' });
+  });
+  app.get('/api/grievances/mine', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user)
+      return reply.code(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Sign-in is required.',
+          requestId: request.id,
+        },
+      });
+    return database ? new PrivacyRepository(database).grievances(user.id) : [];
+  });
+  app.post('/api/grievances', async (request, reply) => {
+    const user = currentUser(request.headers);
+    const parsed = grievanceSchema.safeParse(request.body);
+    if (!user || !database)
+      return reply.code(401).send({
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Sign-in is required.',
+          requestId: request.id,
+        },
+      });
+    if (!parsed.success)
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Complete grievance details are required.',
+          requestId: request.id,
+        },
+      });
+    if (!withinRateLimit(`grievance:${user.id}`))
+      return reply.code(429).send({
+        error: {
+          code: 'RATE_LIMITED',
+          message: 'Too many submissions. Try again later.',
+          requestId: request.id,
+        },
+      });
+    const record = {
+      id: randomUUID(),
+      userId: user.id,
+      ...parsed.data,
+      now: now().toISOString(),
+    };
+    new PrivacyRepository(database).submitGrievance(record);
+    return reply.code(201).send({ id: record.id, status: 'submitted' });
+  });
+  app.get('/api/reviewer/grievances', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user || !isDemoReviewer(user.email))
+      return reply.code(403).send({
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Reviewer access is required.',
+          requestId: request.id,
+        },
+      });
+    return database ? new PrivacyRepository(database).grievances() : [];
+  });
+  app.post('/api/reviewer/grievances/:id/decision', async (request, reply) => {
+    const user = currentUser(request.headers);
+    const id = z.uuid().safeParse((request.params as { id?: unknown }).id);
+    const parsed = z
+      .strictObject({
+        status: z.enum(['actioned', 'dismissed']),
+        reason: z.string().trim().min(10).max(1000),
+      })
+      .safeParse(request.body);
+    if (!user || !isDemoReviewer(user.email))
+      return reply.code(403).send({
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Reviewer access is required.',
+          requestId: request.id,
+        },
+      });
+    if (!database || !id.success || !parsed.success)
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'A valid grievance decision is required.',
+          requestId: request.id,
+        },
+      });
+    const decided = new PrivacyRepository(database).decideGrievance(
+      id.data,
+      parsed.data.status,
+      parsed.data.reason,
+      now().toISOString(),
+    );
+    if (decided)
+      auditDecision(
+        user.id,
+        'grievance',
+        id.data,
+        parsed.data.status,
+        parsed.data.reason,
+      );
+    return decided
+      ? { status: parsed.data.status }
+      : reply.code(409).send({
+          error: {
+            code: 'CONFLICT',
+            message: 'Grievance is not pending.',
             requestId: request.id,
           },
         });
