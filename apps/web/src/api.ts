@@ -52,6 +52,26 @@ export async function registerDemoAccount(input: {
   return sessionResponseSchema.parse(body);
 }
 
+export async function accessDemoAccount(
+  role:
+    | 'student'
+    | 'parent_guardian'
+    | 'owner_manager'
+    | 'professional'
+    | 'reviewer',
+): Promise<SessionResponse> {
+  const response = await fetch('/api/auth/demo-access', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ role }),
+  });
+  const body = await response.json();
+  if (!response.ok)
+    throw new Error(body?.error?.message ?? 'Demo workspace unavailable.');
+  return sessionResponseSchema.parse(body);
+}
+
 export async function loginDemoAccount(input: {
   email: string;
   password: string;

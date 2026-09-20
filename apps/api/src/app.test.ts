@@ -106,6 +106,32 @@ describe('API foundation', () => {
     ).toBe(200);
   });
 
+  it('opens one-click role demos and seeds discoverable sample places', async () => {
+    const database = openDatabase(':memory:');
+    const app = createApp({ mode: 'demo', database });
+    apps.push(app);
+    const access = await app.inject({
+      method: 'POST',
+      url: '/api/auth/demo-access',
+      payload: { role: 'owner_manager' },
+    });
+    expect(access.statusCode).toBe(200);
+    expect(access.headers['set-cookie']).toContain('HttpOnly');
+    expect(access.json()).toMatchObject({
+      authenticated: true,
+      user: { displayName: 'Demo Owner' },
+      profile: { role: 'owner_manager', reviewStatus: 'active' },
+    });
+    expect((await app.inject('/api/candidates')).json()).toHaveLength(3);
+    const reviewer = await app.inject({
+      method: 'POST',
+      url: '/api/auth/demo-access',
+      payload: { role: 'reviewer' },
+    });
+    expect(reviewer.json().user.email).toBe('reviewer@suraksha.demo');
+    database.close();
+  });
+
   it('persists production workspace identities before database-backed writes', async () => {
     const database = openDatabase(':memory:');
     const app = createApp({

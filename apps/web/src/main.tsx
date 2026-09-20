@@ -73,6 +73,7 @@ import {
   loginDemoAccount,
   logoutDemoAccount,
   registerDemoAccount,
+  accessDemoAccount,
   saveOnboarding,
   searchCandidates,
   type PropertyCandidate,
@@ -159,6 +160,7 @@ function App() {
   const [authOpen, setAuthOpen] = useState(false);
   const [authKind, setAuthKind] = useState<'register' | 'login'>('register');
   const [authError, setAuthError] = useState('');
+  const [demoAccessMessage, setDemoAccessMessage] = useState('');
   const [candidates, setCandidates] = useState<PropertyCandidate[]>([]);
   const [publicProfile, setPublicProfile] =
     useState<PublicPropertyProfile | null>(null);
@@ -403,6 +405,33 @@ function App() {
   async function logout() {
     await logoutDemoAccount();
     setSession({ authenticated: false });
+  }
+
+  async function enterDemo(
+    role:
+      | 'student'
+      | 'parent_guardian'
+      | 'owner_manager'
+      | 'professional'
+      | 'reviewer',
+  ) {
+    setDemoAccessMessage('Opening demo workspace…');
+    try {
+      setSession(await accessDemoAccount(role));
+      setCandidates(await fetchCandidates());
+      setDemoAccessMessage('');
+      navigate(
+        role === 'reviewer'
+          ? 'review'
+          : role === 'owner_manager' || role === 'professional'
+            ? 'verification'
+            : 'dashboard',
+      );
+    } catch (error) {
+      setDemoAccessMessage(
+        error instanceof Error ? error.message : 'Demo workspace unavailable.',
+      );
+    }
   }
 
   async function chooseRole(
@@ -2065,6 +2094,44 @@ function App() {
             </form>
           </div>
         </section>
+
+        {mode === 'demo' && !session.authenticated && (
+          <section
+            className="demo-launcher"
+            aria-labelledby="demo-launcher-title"
+          >
+            <div>
+              <p className="index">Working product demo</p>
+              <h2 id="demo-launcher-title">Open a complete role workspace</h2>
+              <p>
+                No registration required. Choose a role to test its real forms,
+                private workflows and reviewer-controlled actions.
+              </p>
+            </div>
+            <div className="demo-role-grid">
+              {(
+                [
+                  ['student', 'Student', 'Report issues and manage evidence'],
+                  ['owner_manager', 'Owner', 'Claims, buildings and repairs'],
+                  ['parent_guardian', 'Parent', 'Approved student summaries'],
+                  [
+                    'professional',
+                    'Professional',
+                    'Credentials and inspections',
+                  ],
+                  ['reviewer', 'Reviewer', 'Moderation, audit and coverage'],
+                ] as const
+              ).map(([role, label, description]) => (
+                <button key={role} onClick={() => void enterDemo(role)}>
+                  <span>{label}</span>
+                  <small>{description}</small>
+                  <Arrow />
+                </button>
+              ))}
+            </div>
+            {demoAccessMessage && <p role="status">{demoAccessMessage}</p>}
+          </section>
+        )}
 
         <section
           className="live-results"

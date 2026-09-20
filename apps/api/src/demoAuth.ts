@@ -78,6 +78,50 @@ function createDemoSession(database: DatabaseSync, userId: string, now: Date) {
   return { token, expiresAt };
 }
 
+export function accessDemoRole(
+  database: DatabaseSync,
+  role:
+    | 'student'
+    | 'parent_guardian'
+    | 'owner_manager'
+    | 'professional'
+    | 'reviewer',
+  now: Date,
+) {
+  const identities = {
+    student: ['demo-student', 'student@suraksha.demo', 'Demo Student'],
+    parent_guardian: ['demo-guardian', 'guardian@suraksha.demo', 'Demo Parent'],
+    owner_manager: ['demo-owner', 'owner@suraksha.demo', 'Demo Owner'],
+    professional: [
+      'demo-professional',
+      'professional@suraksha.demo',
+      'Demo Inspector',
+    ],
+    reviewer: ['demo-reviewer', 'reviewer@suraksha.demo', 'Demo Reviewer'],
+  } as const;
+  const [id, email, displayName] = identities[role];
+  database
+    .prepare(
+      `INSERT INTO users(id,email,display_name,password_hash,created_at)
+       VALUES (?,?,?,'demo_quick_access',?)
+       ON CONFLICT(id) DO UPDATE SET email=excluded.email,display_name=excluded.display_name`,
+    )
+    .run(id, email, displayName, now.toISOString());
+  const profileRole = role === 'reviewer' ? 'student' : role;
+  database
+    .prepare(
+      `INSERT INTO account_profiles(user_id,role,review_status,updated_at)
+       VALUES (?,?, 'active', ?)
+       ON CONFLICT(user_id) DO UPDATE SET role=excluded.role,review_status='active',updated_at=excluded.updated_at`,
+    )
+    .run(id, profileRole, now.toISOString());
+  return {
+    user: { id, email, displayName },
+    profile: { role: profileRole, reviewStatus: 'active' as const },
+    ...createDemoSession(database, id, now),
+  };
+}
+
 export function readDemoUser(
   database: DatabaseSync,
   cookie: string | undefined,

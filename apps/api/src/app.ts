@@ -33,6 +33,7 @@ import {
 } from './database.js';
 import {
   clearSessionCookie,
+  accessDemoRole,
   loginDemoUser,
   readDemoUser,
   registerDemoUser,
@@ -80,6 +81,15 @@ export function createApp(options: AppOptions = {}) {
   });
   const registrationSchema = credentialsSchema.extend({
     displayName: z.string().trim().min(2).max(100),
+  });
+  const demoAccessSchema = z.strictObject({
+    role: z.enum([
+      'student',
+      'parent_guardian',
+      'owner_manager',
+      'professional',
+      'reviewer',
+    ]),
   });
   const onboardingSchema = z.strictObject({
     role: z.enum([
@@ -2342,6 +2352,70 @@ export function createApp(options: AppOptions = {}) {
         });
       throw error;
     }
+  });
+
+  app.post('/api/auth/demo-access', async (request, reply) => {
+    if (mode !== 'demo' || !database)
+      return reply.code(404).send({
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Demo access is unavailable.',
+          requestId: request.id,
+        },
+      });
+    const parsed = demoAccessSchema.safeParse(request.body);
+    if (!parsed.success)
+      return reply.code(400).send({
+        error: {
+          code: 'BAD_REQUEST',
+          message: 'Choose a supported demo role.',
+          requestId: request.id,
+        },
+      });
+    const candidates = new PropertyCandidateRepository(database);
+    if (candidates.list().length === 0) {
+      const createdAt = now().toISOString();
+      const demoCandidates = [
+        [
+          'a0000000-0000-4000-8000-000000000001',
+          'Aarambh Demo PG',
+          'Kota, Rajasthan',
+          'paying_guest',
+        ],
+        [
+          'a0000000-0000-4000-8000-000000000002',
+          'Nayi Disha Demo Hostel',
+          'Mukherjee Nagar, Delhi',
+          'hostel',
+        ],
+        [
+          'a0000000-0000-4000-8000-000000000003',
+          'Udaan Demo Coaching Centre',
+          'Laxmi Nagar, Delhi',
+          'coaching_institute',
+        ],
+      ] as const;
+      demoCandidates.forEach(([id, name, locality, propertyType]) =>
+        candidates.save({
+          id,
+          name,
+          locality,
+          propertyType,
+          source: 'demo_seed',
+          sourceUrl: 'https://example.com/demo-source',
+          observedAt: createdAt.slice(0, 10),
+          createdAt,
+        }),
+      );
+    }
+    const result = accessDemoRole(database, parsed.data.role, now());
+    reply.header('Set-Cookie', sessionCookie(result.token, result.expiresAt));
+    return {
+      authenticated: true,
+      user: result.user,
+      memberships: [],
+      profile: result.profile,
+    };
   });
 
   app.post('/api/auth/login', async (request, reply) => {
