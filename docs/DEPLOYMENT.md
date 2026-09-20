@@ -10,6 +10,23 @@ Docker is required. It is not installed on the current development machine, so t
 - Production: set a random `IDENTITY_GATEWAY_SECRET` of at least 32 characters, then run `docker compose --profile production up -d --build production`
 - Readiness: `GET /api/ready`
 
+## Submission demo on Railway
+
+`railway.json` deploys the repository Dockerfile as one full-stack service and
+uses `/api/ready` as the release health check. For a public hackathon demo, keep
+`APP_MODE=demo`; the UI will retain its demo-data banner and no identity-gateway
+secret is required. Railway supplies `PORT`, while the image already binds to
+`0.0.0.0`.
+
+1. Run `railway up --new --name suraksha-demo --detach -y`.
+2. Run `railway domain` and create the generated public domain.
+3. Confirm both `/` and `/api/ready` over HTTPS.
+
+The demo SQLite database and uploads are ephemeral until a Railway volume is
+mounted at `/app/data`. Attach that volume before using the link for data that
+must survive a redeploy. Production mode still requires the identity gateway,
+separate durable storage and every production checklist item below.
+
 The Compose ports bind to loopback. Put an authenticated reverse proxy or identity gateway in front of production. The gateway must remove incoming `oai-authenticated-user-*` and `x-suraksha-gateway-secret` headers, set verified identity headers itself, attach the shared secret, terminate TLS and forward only to the loopback/container network. Direct internet access to the application port is prohibited.
 
 ## Production checklist
