@@ -22,7 +22,9 @@
     "start": "npm run start -w @suraksha/api",
     "smoke": "node scripts/smoke.mjs",
     "quality:audit": "node scripts/quality-audit.mjs",
-    "recovery:drill": "node scripts/recovery-drill.mjs"
+    "recovery:drill": "node scripts/recovery-drill.mjs",
+    "smoke:staging": "node scripts/staging-smoke.mjs",
+    "release:gate": "npm run verify && npm run quality:audit && npm run recovery:drill && npm run smoke && npm run smoke:staging"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

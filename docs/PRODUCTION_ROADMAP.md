@@ -191,6 +191,8 @@ Run student-to-owner-to-reviewer-to-inspector scenarios in demo and staging. Fix
 
 Done when the acceptance checklist passes against a production-like deployment.
 
+Status: partial — the release gate now combines full verification, accessibility/asset budgets, backup restore, demo smoke and a production-mode staging smoke that exercises external identity persistence, onboarding, database writes and search. Automated integration scenarios cover all four roles and reviewer-controlled publication/resolution. Manual screen-reader/device passes and an actual deployment image rollback rehearsal remain before release approval.
+
 ## Phase 22 — Deployment
 
 Deploy separate demo and production services, databases and storage. Configure domains, TLS, secrets, migrations, monitoring, alerts and CI/CD approvals.

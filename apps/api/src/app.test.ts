@@ -106,6 +106,48 @@ describe('API foundation', () => {
     ).toBe(200);
   });
 
+  it('persists production workspace identities before database-backed writes', async () => {
+    const database = openDatabase(':memory:');
+    const app = createApp({ mode: 'production', database });
+    apps.push(app);
+    const headers = {
+      'oai-authenticated-user-id': '60000000-0000-4000-8000-000000000001',
+      'oai-authenticated-user-email': 'production-student@example.test',
+      'oai-authenticated-user-full-name': 'Production%20Student',
+      'oai-authenticated-user-full-name-encoding': 'percent-encoded-utf-8',
+    };
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/onboarding',
+          headers,
+          payload: { role: 'student' },
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/candidates',
+          headers,
+          payload: {
+            name: 'Production Candidate Hostel',
+            locality: 'Kota Rajasthan',
+            propertyType: 'hostel',
+          },
+        })
+      ).statusCode,
+    ).toBe(201);
+    expect(
+      database
+        .prepare('SELECT email FROM users WHERE id=?')
+        .get(headers['oai-authenticated-user-id']),
+    ).toEqual({ email: 'production-student@example.test' });
+    database.close();
+  });
+
   it('registers, restores and revokes a demo session through an HttpOnly cookie', async () => {
     const database = openDatabase(':memory:');
     const uploadRoot = mkdtempSync(join(tmpdir(), 'suraksha-upload-'));

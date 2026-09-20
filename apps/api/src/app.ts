@@ -144,14 +144,24 @@ export function createApp(options: AppOptions = {}) {
     });
   const isDemoReviewer = (email: string) =>
     mode === 'demo' && email.toLowerCase() === 'reviewer@suraksha.demo';
-  const currentUser = (headers: IncomingHttpHeaders) =>
-    (database && mode === 'demo'
-      ? readDemoUser(
-          database,
-          typeof headers.cookie === 'string' ? headers.cookie : undefined,
-          now(),
+  const currentUser = (headers: IncomingHttpHeaders) => {
+    const user =
+      (database && mode === 'demo'
+        ? readDemoUser(
+            database,
+            typeof headers.cookie === 'string' ? headers.cookie : undefined,
+            now(),
+          )
+        : null) ?? readWorkspaceIdentity(headers);
+    if (user && database && mode === 'production')
+      database
+        .prepare(
+          `INSERT INTO users(id,email,display_name,password_hash,created_at) VALUES (?,?,?,'external_identity',?)
+          ON CONFLICT(id) DO UPDATE SET email=excluded.email,display_name=excluded.display_name`,
         )
-      : null) ?? readWorkspaceIdentity(headers);
+        .run(user.id, user.email, user.displayName, now().toISOString());
+    return user;
+  };
   const auditDecision = (
     actorUserId: string,
     entityType: string,
@@ -2251,7 +2261,7 @@ export function createApp(options: AppOptions = {}) {
           requestId: request.id,
         },
       });
-    if (mode !== 'demo' || !database)
+    if (!database)
       return reply.code(503).send({
         error: {
           code: 'ONBOARDING_UNAVAILABLE',
