@@ -27,6 +27,20 @@ mounted at `/app/data`. Attach that volume before using the link for data that
 must survive a redeploy. Production mode still requires the identity gateway,
 separate durable storage and every production checklist item below.
 
+## Submission demo on Render
+
+`render.yaml` creates one free Docker web service in Singapore, enables deploys
+from `main`, and checks `/api/ready` before treating a release as healthy. Open
+the repository through Render's Blueprint flow and apply the detected service:
+
+`https://dashboard.render.com/blueprint/new?repo=https://github.com/FuzailAhmad-Sphericaljudge/SuRaksha`
+
+The free service runs the complete frontend and API from one HTTPS origin. Its
+filesystem is ephemeral, so demo accounts, SQLite changes and uploaded evidence
+can reset after a restart, idle spin-down or redeploy. Do not use this service
+for real student data; production requires external durable database and object
+storage services.
+
 The Compose ports bind to loopback. Put an authenticated reverse proxy or identity gateway in front of production. The gateway must remove incoming `oai-authenticated-user-*` and `x-suraksha-gateway-secret` headers, set verified identity headers itself, attach the shared secret, terminate TLS and forward only to the loopback/container network. Direct internet access to the application port is prohibited.
 
 ## Production checklist

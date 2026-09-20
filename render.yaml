@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: suraksha-demo
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: main
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/ready
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: APP_MODE
+        value: demo
+      - key: LOG_LEVEL
+        value: info
