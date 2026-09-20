@@ -60,6 +60,9 @@ import {
   fetchGuardianSummary,
   fetchSavedProperties,
   saveProperty,
+  fetchReviewTasks,
+  updateReviewTask,
+  searchAudit,
   loginDemoAccount,
   logoutDemoAccount,
   registerDemoAccount,
@@ -82,6 +85,8 @@ import {
   type GuardianShare,
   type SharedStudent,
   type GuardianSummary,
+  type ReviewTask,
+  type AuditEvent,
 } from './api';
 import './styles.css';
 
@@ -178,6 +183,8 @@ function App() {
   const [savedProperties, setSavedProperties] = useState<PropertyCandidate[]>(
     [],
   );
+  const [reviewTasks, setReviewTasks] = useState<ReviewTask[]>([]);
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [query, setQuery] = useState('');
   const [message, setMessage] = useState(
     'Search is a visual preview. No live properties are indexed.',
@@ -238,6 +245,8 @@ function App() {
       void fetchReviewerReports().then(setReviewReports);
       void fetchReviewerRepairs().then(setReviewRepairs);
       void fetchCredentials(true).then(setReviewCredentials);
+      void fetchReviewTasks().then(setReviewTasks);
+      void searchAudit().then(setAuditEvents);
     }
     if (session.authenticated && session.profile?.role === 'professional') {
       void fetchCredentials().then(setCredentials);
@@ -741,6 +750,28 @@ function App() {
       );
     }
   }
+  async function takeReviewTask(task: ReviewTask) {
+    await updateReviewTask(task.id, {
+      assignee: 'demo-reviewer',
+      status: 'in_progress',
+      reasonCode: 'assignment',
+      note: 'Reviewer accepted responsibility for this task.',
+    });
+    setReviewTasks(await fetchReviewTasks());
+    setAuditEvents(await searchAudit());
+  }
+  async function escalateReviewTask(task: ReviewTask) {
+    const note = window.prompt('Escalation reason:');
+    if (!note) return;
+    await updateReviewTask(task.id, {
+      priority: 'urgent',
+      escalationReason: note,
+      reasonCode: 'safety_risk',
+      note,
+    });
+    setReviewTasks(await fetchReviewTasks());
+    setAuditEvents(await searchAudit());
+  }
 
   return (
     <div className="shell">
@@ -1225,6 +1256,55 @@ function App() {
                 </article>
               ))}
             </div>
+          </section>
+        )}
+      {session.authenticated &&
+        session.user.email === 'reviewer@suraksha.demo' && (
+          <section className="claim-panel" aria-labelledby="operations-title">
+            <div>
+              <p className="kicker">Reviewer operations</p>
+              <h2 id="operations-title">Workload and audit</h2>
+              <p>
+                Tasks are ordered by priority and due date. Every assignment or
+                escalation requires a reason.
+              </p>
+            </div>
+            <div className="claim-list">
+              {reviewTasks.map((task) => (
+                <article key={task.id}>
+                  <span>
+                    {task.priority} · {task.status}
+                  </span>
+                  <strong>{task.title}</strong>
+                  <p>
+                    {task.sourceType} · due{' '}
+                    {new Date(task.dueAt).toLocaleString()}
+                  </p>
+                  <div className="decision-actions">
+                    <button onClick={() => void takeReviewTask(task)}>
+                      Assign to me
+                    </button>
+                    <button onClick={() => void escalateReviewTask(task)}>
+                      Escalate
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+            <details>
+              <summary>Recent audit events ({auditEvents.length})</summary>
+              <div className="claim-list">
+                {auditEvents.slice(0, 10).map((event) => (
+                  <article key={event.id}>
+                    <span>{event.reasonCode}</span>
+                    <strong>
+                      {event.action} · {event.entityType}
+                    </strong>
+                    <p>{event.note}</p>
+                  </article>
+                ))}
+              </div>
+            </details>
           </section>
         )}
       {session.authenticated && session.profile?.role === 'student' && (

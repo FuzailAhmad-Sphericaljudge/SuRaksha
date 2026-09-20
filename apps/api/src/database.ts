@@ -152,6 +152,21 @@ export function openDatabase(path: string) {
     );
     INSERT OR IGNORE INTO schema_migrations(version, applied_at)
       VALUES (13, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    CREATE TABLE IF NOT EXISTS review_tasks (
+      id TEXT PRIMARY KEY, source_type TEXT NOT NULL, source_id TEXT NOT NULL,
+      title TEXT NOT NULL, priority TEXT NOT NULL DEFAULT 'normal', status TEXT NOT NULL DEFAULT 'open',
+      assignee TEXT, due_at TEXT NOT NULL, escalation_reason TEXT, updated_at TEXT NOT NULL,
+      UNIQUE(source_type, source_id)
+    );
+    CREATE TABLE IF NOT EXISTS audit_events (
+      id TEXT PRIMARY KEY, actor_user_id TEXT NOT NULL, action TEXT NOT NULL,
+      entity_type TEXT NOT NULL, entity_id TEXT NOT NULL, reason_code TEXT NOT NULL,
+      note TEXT NOT NULL, created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_review_tasks_status_due ON review_tasks(status,due_at);
+    CREATE INDEX IF NOT EXISTS idx_audit_events_entity ON audit_events(entity_type,entity_id,created_at);
+    INSERT OR IGNORE INTO schema_migrations(version, applied_at)
+      VALUES (14, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
   `);
   const candidateColumns = database
     .prepare('PRAGMA table_info(property_candidates)')
@@ -1329,5 +1344,161 @@ export class GuardianRepository {
       WHERE user_id=? ORDER BY savedAt DESC`,
       )
       .all(userId);
+  }
+}
+
+export class ReviewerOperationsRepository {
+  constructor(private readonly database: DatabaseSync) {}
+  sync(now: string) {
+    const due = new Date(
+      new Date(now).getTime() + 48 * 60 * 60 * 1000,
+    ).toISOString();
+    const insert = this.database.prepare(
+      `INSERT OR IGNORE INTO review_tasks(id,source_type,source_id,title,due_at,updated_at)
+      VALUES (?,?,?,?,?,?)`,
+    );
+    const sources = [
+      {
+        type: 'claim',
+        sql: "SELECT id, 'Property claim' AS title FROM property_claims WHERE status IN ('submitted','under_review')",
+      },
+      {
+        type: 'evidence',
+        sql: "SELECT id, 'Evidence moderation' AS title FROM evidence_uploads WHERE moderation_status='pending'",
+      },
+      {
+        type: 'report',
+        sql: "SELECT id, 'Issue report review' AS title FROM issue_reports WHERE status='submitted'",
+      },
+      {
+        type: 'credential',
+        sql: "SELECT id, 'Credential review' AS title FROM professional_credentials WHERE status='submitted'",
+      },
+      {
+        type: 'repair',
+        sql: "SELECT report_id AS id, 'Repair reinspection' AS title FROM issue_repairs WHERE status='reinspection_requested'",
+      },
+    ];
+    for (const source of sources)
+      for (const row of this.database.prepare(source.sql).all() as Array<{
+        id: string;
+        title: string;
+      }>)
+        insert.run(
+          `task-${source.type}-${row.id}`,
+          source.type,
+          row.id,
+          row.title,
+          due,
+          now,
+        );
+  }
+  list(
+    filters: {
+      status?: string | undefined;
+      assignee?: string | undefined;
+      overdue?: boolean | undefined;
+    },
+    now: string,
+  ) {
+    this.sync(now);
+    return this.database
+      .prepare(
+        `SELECT id,source_type AS sourceType,source_id AS sourceId,title,priority,status,
+      assignee,due_at AS dueAt,escalation_reason AS escalationReason,updated_at AS updatedAt
+      FROM review_tasks WHERE (? IS NULL OR status=?) AND (? IS NULL OR assignee=?)
+      AND (?=0 OR due_at < ?) ORDER BY CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 ELSE 2 END,due_at ASC`,
+      )
+      .all(
+        filters.status ?? null,
+        filters.status ?? null,
+        filters.assignee ?? null,
+        filters.assignee ?? null,
+        filters.overdue ? 1 : 0,
+        now,
+      );
+  }
+  updateTask(
+    id: string,
+    input: {
+      assignee?: string | undefined;
+      priority?: string | undefined;
+      status?: string | undefined;
+      escalationReason?: string | null | undefined;
+    },
+    now: string,
+  ): boolean {
+    const current = this.database
+      .prepare(
+        'SELECT assignee,priority,status,escalation_reason AS escalationReason FROM review_tasks WHERE id=?',
+      )
+      .get(id) as
+      | {
+          assignee: string | null;
+          priority: string;
+          status: string;
+          escalationReason: string | null;
+        }
+      | undefined;
+    if (!current) return false;
+    return (
+      this.database
+        .prepare(
+          `UPDATE review_tasks SET assignee=?,priority=?,status=?,escalation_reason=?,updated_at=? WHERE id=?`,
+        )
+        .run(
+          input.assignee ?? current.assignee ?? null,
+          input.priority ?? current.priority,
+          input.status ?? current.status,
+          input.escalationReason === undefined
+            ? current.escalationReason
+            : input.escalationReason,
+          now,
+          id,
+        ).changes === 1
+    );
+  }
+  complete(sourceType: string, sourceId: string, now: string) {
+    this.database
+      .prepare(
+        "UPDATE review_tasks SET status='completed',updated_at=? WHERE source_type=? AND source_id=?",
+      )
+      .run(now, sourceType, sourceId);
+  }
+  audit(input: {
+    id: string;
+    actorUserId: string;
+    action: string;
+    entityType: string;
+    entityId: string;
+    reasonCode: string;
+    note: string;
+    createdAt: string;
+  }) {
+    this.database
+      .prepare(
+        'INSERT INTO audit_events(id,actor_user_id,action,entity_type,entity_id,reason_code,note,created_at) VALUES (?,?,?,?,?,?,?,?)',
+      )
+      .run(
+        input.id,
+        input.actorUserId,
+        input.action,
+        input.entityType,
+        input.entityId,
+        input.reasonCode,
+        input.note,
+        input.createdAt,
+      );
+  }
+  auditSearch(query: string, entityType?: string) {
+    const term = `%${query.toLowerCase()}%`;
+    return this.database
+      .prepare(
+        `SELECT id,actor_user_id AS actorUserId,action,entity_type AS entityType,entity_id AS entityId,
+      reason_code AS reasonCode,note,created_at AS createdAt FROM audit_events
+      WHERE (?='' OR lower(action||' '||entity_type||' '||reason_code||' '||note||' '||entity_id) LIKE ?)
+      AND (? IS NULL OR entity_type=?) ORDER BY created_at DESC LIMIT 100`,
+      )
+      .all(query, term, entityType ?? null, entityType ?? null);
   }
 }

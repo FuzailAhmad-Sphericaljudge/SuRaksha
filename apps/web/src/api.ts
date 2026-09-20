@@ -735,3 +735,54 @@ export async function fetchSavedProperties(): Promise<
 export async function saveProperty(candidateId: string) {
   return jsonRequest(`/api/saved-properties/${candidateId}`, 'POST');
 }
+
+export type ReviewTask = {
+  id: string;
+  sourceType: string;
+  sourceId: string;
+  title: string;
+  priority: string;
+  status: string;
+  assignee: string | null;
+  dueAt: string;
+  escalationReason: string | null;
+};
+export type AuditEvent = {
+  id: string;
+  actorUserId: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  reasonCode: string;
+  note: string;
+  createdAt: string;
+};
+export async function fetchReviewTasks(): Promise<ReviewTask[]> {
+  const response = await fetch('/api/reviewer/tasks', {
+    credentials: 'same-origin',
+    cache: 'no-store',
+  });
+  if (!response.ok) throw new Error('Review workload unavailable.');
+  return (await response.json()) as ReviewTask[];
+}
+export async function updateReviewTask(
+  id: string,
+  input: {
+    assignee?: string;
+    priority?: string;
+    status?: string;
+    escalationReason?: string | null;
+    reasonCode: string;
+    note: string;
+  },
+) {
+  return jsonRequest(`/api/reviewer/tasks/${id}`, 'PATCH', input);
+}
+export async function searchAudit(q = ''): Promise<AuditEvent[]> {
+  const response = await fetch(
+    `/api/reviewer/audit?${new URLSearchParams({ q })}`,
+    { credentials: 'same-origin', cache: 'no-store' },
+  );
+  if (!response.ok) throw new Error('Audit unavailable.');
+  return (await response.json()) as AuditEvent[];
+}

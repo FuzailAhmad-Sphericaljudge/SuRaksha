@@ -26,6 +26,7 @@ import {
   InspectionRepository,
   NotificationRepository,
   GuardianRepository,
+  ReviewerOperationsRepository,
   PropertyCandidateRepository,
 } from './database.js';
 import {
@@ -149,6 +150,27 @@ export function createApp(options: AppOptions = {}) {
           now(),
         )
       : null) ?? readWorkspaceIdentity(headers);
+  const auditDecision = (
+    actorUserId: string,
+    entityType: string,
+    entityId: string,
+    action: string,
+    note: string,
+  ) => {
+    if (!database) return;
+    const operations = new ReviewerOperationsRepository(database);
+    operations.complete(entityType, entityId, now().toISOString());
+    operations.audit({
+      id: randomUUID(),
+      actorUserId,
+      action,
+      entityType,
+      entityId,
+      reasonCode: 'decision',
+      note,
+      createdAt: now().toISOString(),
+    });
+  };
   const app = Fastify({
     logger: options.logLevel
       ? {
@@ -224,6 +246,21 @@ export function createApp(options: AppOptions = {}) {
     });
   const guardianGrantSchema = z.strictObject({
     guardianEmail: z.email().max(320),
+  });
+  const reviewTaskSchema = z.strictObject({
+    assignee: z.string().trim().min(2).max(120).optional(),
+    priority: z.enum(['normal', 'high', 'urgent']).optional(),
+    status: z.enum(['open', 'in_progress', 'completed']).optional(),
+    escalationReason: z.string().trim().min(10).max(1000).nullable().optional(),
+    reasonCode: z.enum([
+      'assignment',
+      'sla_risk',
+      'safety_risk',
+      'duplicate',
+      'decision',
+      'correction',
+    ]),
+    note: z.string().trim().min(10).max(1000),
   });
   app.register(fastifyMultipart, {
     limits: { files: 1, fileSize: 50_000_000, fields: 4 },
@@ -478,6 +515,14 @@ export function createApp(options: AppOptions = {}) {
         message: `Your property claim review is complete: ${parsed.data.status}. Open SafePG for details.`,
         now: now().toISOString(),
       });
+    if (decided)
+      auditDecision(
+        user.id,
+        'claim',
+        identifier.data,
+        parsed.data.status,
+        parsed.data.reason,
+      );
     return decided
       ? { status: parsed.data.status }
       : reply.code(404).send({
@@ -832,6 +877,112 @@ export function createApp(options: AppOptions = {}) {
         });
   });
 
+  app.get('/api/reviewer/tasks', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user || !isDemoReviewer(user.email))
+      return reply.code(403).send({
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Reviewer access is required.',
+          requestId: request.id,
+        },
+      });
+    const filters = z
+      .strictObject({
+        status: z.enum(['open', 'in_progress', 'completed']).optional(),
+        assignee: z.string().max(120).optional(),
+        overdue: z.enum(['true', 'false']).optional(),
+      })
+      .safeParse(request.query);
+    if (!database || !filters.success)
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid queue filters.',
+          requestId: request.id,
+        },
+      });
+    return new ReviewerOperationsRepository(database).list(
+      { ...filters.data, overdue: filters.data.overdue === 'true' },
+      now().toISOString(),
+    );
+  });
+  app.patch('/api/reviewer/tasks/:id', async (request, reply) => {
+    const user = currentUser(request.headers);
+    const id = z
+      .string()
+      .min(6)
+      .max(200)
+      .safeParse((request.params as { id?: unknown }).id);
+    const parsed = reviewTaskSchema.safeParse(request.body);
+    if (!user || !isDemoReviewer(user.email))
+      return reply.code(403).send({
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Reviewer access is required.',
+          requestId: request.id,
+        },
+      });
+    if (!database || !id.success || !parsed.success)
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Valid task update and reason are required.',
+          requestId: request.id,
+        },
+      });
+    const { reasonCode, note, ...update } = parsed.data;
+    const repository = new ReviewerOperationsRepository(database);
+    if (!repository.updateTask(id.data, update, now().toISOString()))
+      return reply.code(404).send({
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Review task not found.',
+          requestId: request.id,
+        },
+      });
+    repository.audit({
+      id: randomUUID(),
+      actorUserId: user.id,
+      action: 'review_task_updated',
+      entityType: 'review_task',
+      entityId: id.data,
+      reasonCode,
+      note,
+      createdAt: now().toISOString(),
+    });
+    return { status: 'updated' };
+  });
+  app.get('/api/reviewer/audit', async (request, reply) => {
+    const user = currentUser(request.headers);
+    if (!user || !isDemoReviewer(user.email))
+      return reply.code(403).send({
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Reviewer access is required.',
+          requestId: request.id,
+        },
+      });
+    const parsed = z
+      .strictObject({
+        q: z.string().trim().max(120).default(''),
+        entityType: z.string().trim().max(80).optional(),
+      })
+      .safeParse(request.query);
+    if (!database || !parsed.success)
+      return reply.code(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid audit search.',
+          requestId: request.id,
+        },
+      });
+    return new ReviewerOperationsRepository(database).auditSearch(
+      parsed.data.q,
+      parsed.data.entityType,
+    );
+  });
+
   app.get('/api/buildings/mine', async (request, reply) => {
     const user = currentUser(request.headers);
     if (!user)
@@ -1148,11 +1299,20 @@ export function createApp(options: AppOptions = {}) {
           requestId: request.id,
         },
       });
-    return new EvidenceUploadRepository(database).decide(
+    const decided = new EvidenceUploadRepository(database).decide(
       identifier.data,
       decision.data.status,
       decision.data.reason,
-    )
+    );
+    if (decided)
+      auditDecision(
+        user.id,
+        'evidence',
+        identifier.data,
+        decision.data.status,
+        decision.data.reason,
+      );
+    return decided
       ? { status: decision.data.status }
       : reply.code(404).send({
           error: {
@@ -1198,11 +1358,20 @@ export function createApp(options: AppOptions = {}) {
           requestId: request.id,
         },
       });
-    return new IssueReportRepository(database).decide(
+    const decided = new IssueReportRepository(database).decide(
       identifier.data,
       decision.data.status,
       decision.data.reason,
-    )
+    );
+    if (decided)
+      auditDecision(
+        user.id,
+        'report',
+        identifier.data,
+        decision.data.status,
+        decision.data.reason,
+      );
+    return decided
       ? { status: decision.data.status }
       : reply.code(409).send({
           error: {
@@ -1445,13 +1614,22 @@ export function createApp(options: AppOptions = {}) {
           requestId: request.id,
         },
       });
-    return new RepairRepository(database).decide(
+    const decided = new RepairRepository(database).decide(
       identifier.data,
       parsed.data.status === 'resolved',
       parsed.data.reason,
       now().toISOString(),
       randomUUID(),
-    )
+    );
+    if (decided)
+      auditDecision(
+        user.id,
+        'repair',
+        identifier.data,
+        parsed.data.status,
+        parsed.data.reason,
+      );
+    return decided
       ? { status: parsed.data.status }
       : reply.code(409).send({
           error: {
@@ -1565,11 +1743,20 @@ export function createApp(options: AppOptions = {}) {
           requestId: request.id,
         },
       });
-    return new InspectionRepository(database).decideCredential(
+    const decided = new InspectionRepository(database).decideCredential(
       identifier.data,
       decision.data.status,
       decision.data.reason,
-    )
+    );
+    if (decided)
+      auditDecision(
+        user.id,
+        'credential',
+        identifier.data,
+        decision.data.status,
+        decision.data.reason,
+      );
+    return decided
       ? { status: decision.data.status }
       : reply.code(409).send({
           error: {

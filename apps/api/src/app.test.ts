@@ -431,6 +431,28 @@ describe('API foundation', () => {
       headers: { cookie: reviewerCookie },
     });
     expect(queue.json()).toHaveLength(1);
+    const tasks = await app.inject({
+      url: '/api/reviewer/tasks?status=open',
+      headers: { cookie: reviewerCookie },
+    });
+    expect(tasks.json()).toHaveLength(1);
+    expect(
+      (
+        await app.inject({
+          method: 'PATCH',
+          url: `/api/reviewer/tasks/${tasks.json()[0].id}`,
+          headers: { cookie: reviewerCookie },
+          payload: {
+            assignee: 'demo-reviewer',
+            priority: 'urgent',
+            status: 'in_progress',
+            escalationReason: 'Claim is nearing its review target.',
+            reasonCode: 'sla_risk',
+            note: 'Assigned and escalated for same-day review.',
+          },
+        })
+      ).statusCode,
+    ).toBe(200);
     expect(
       (
         await app.inject({
@@ -444,6 +466,22 @@ describe('API foundation', () => {
         })
       ).statusCode,
     ).toBe(200);
+    expect(
+      (
+        await app.inject({
+          url: '/api/reviewer/tasks?status=completed',
+          headers: { cookie: reviewerCookie },
+        })
+      ).json(),
+    ).toHaveLength(1);
+    const audit = await app.inject({
+      url: '/api/reviewer/audit?q=claim',
+      headers: { cookie: reviewerCookie },
+    });
+    expect(audit.json()).toHaveLength(2);
+    expect(
+      audit.json().map((event: { reasonCode: string }) => event.reasonCode),
+    ).toContain('sla_risk');
     expect(
       (
         await app.inject({

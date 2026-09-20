@@ -159,6 +159,8 @@ Build workload queues, service targets, assignment, escalation, reason codes and
 
 Done when every sensitive decision has an accountable actor and unresolved work cannot silently disappear.
 
+Status: complete — a unified queue derives pending claims, evidence, reports, credentials and repair reinspections into durable tasks with 48-hour targets. Reviewers can assign, prioritize and escalate tasks only with structured reason codes and notes. Sensitive claim, evidence and report decisions close their tasks and write actor-attributed audit events; audit history is searchable by text and entity type.
+
 ## Phase 18 — Analytics and coverage quality
 
 Measure candidate coverage, verification freshness, unresolved issue age, duplicate rate and locality gaps. Keep product analytics separate from safety conclusions.
