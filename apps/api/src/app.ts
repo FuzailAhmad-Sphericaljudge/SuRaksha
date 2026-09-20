@@ -306,6 +306,31 @@ export function createApp(options: AppOptions = {}) {
     });
   });
 
+  app.get('/api/ready', async (_request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    if (!database)
+      return reply.code(503).send({
+        service: 'suraksha-api',
+        status: 'not_ready',
+        database: 'unavailable',
+      });
+    try {
+      database.prepare('SELECT 1 AS ready').get();
+      return {
+        service: 'suraksha-api',
+        status: 'ready',
+        database: 'connected',
+        mode,
+      };
+    } catch {
+      return reply.code(503).send({
+        service: 'suraksha-api',
+        status: 'not_ready',
+        database: 'unavailable',
+      });
+    }
+  });
+
   app.get('/api/bootstrap', async (_request, reply) => {
     reply.header('Cache-Control', 'no-store');
     return bootstrapResponseSchema.parse({ mode, demoData: mode === 'demo' });

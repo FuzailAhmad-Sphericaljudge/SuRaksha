@@ -20,7 +20,9 @@
     "format:check": "prettier --check .",
     "verify": "npm run format:check && npm run typecheck && npm run test && npm run build",
     "start": "npm run start -w @suraksha/api",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "quality:audit": "node scripts/quality-audit.mjs",
+    "recovery:drill": "node scripts/recovery-drill.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

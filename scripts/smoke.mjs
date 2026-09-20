@@ -62,6 +62,11 @@ try {
   });
   assert.equal(health.status, 200);
   assert.equal((await health.json()).service, 'suraksha-api');
+  const ready = await fetch(`${origin}/api/ready`, {
+    signal: AbortSignal.timeout(5_000),
+  });
+  assert.equal(ready.status, 200);
+  assert.equal((await ready.json()).database, 'connected');
   const session = await fetch(`${origin}/api/session`, {
     signal: AbortSignal.timeout(5_000),
   });

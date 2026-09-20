@@ -183,6 +183,8 @@ Test keyboard/screen-reader flows, mobile networks, image budgets, database inde
 
 Done when core flows meet accessibility targets and a backup restore is demonstrated.
 
+Status: partial — keyboard skip navigation, visible focus, reduced-motion behavior, semantic landmarks and live status regions have automated source checks. Compiled JavaScript/CSS budgets are enforced, readiness checks exercise the database, query indexes cover major dashboards, and an online SQLite backup/restore integrity drill is executable. Manual screen-reader testing, throttled mobile-network profiling, encrypted off-host production backups and alert routing remain release-candidate/deployment work.
+
 ## Phase 21 — End-to-end release candidate
 
 Run student-to-owner-to-reviewer-to-inspector scenarios in demo and staging. Fix all release-blocking issues and rehearse rollback.

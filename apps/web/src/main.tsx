@@ -817,6 +817,9 @@ function App() {
 
   return (
     <div className="shell">
+      <a className="skip-link" href="#top">
+        Skip to main content
+      </a>
       {mode === 'demo' && (
         <div className="mode-banner" role="status">
           Demo mode · Fictional resettable data

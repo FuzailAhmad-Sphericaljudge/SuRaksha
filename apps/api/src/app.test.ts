@@ -50,6 +50,15 @@ describe('API foundation', () => {
       );
     }
     expect(responses[0]?.body).toBe(responses[1]?.body);
+    expect((await app.inject('/api/ready')).statusCode).toBe(503);
+    const database = openDatabase(':memory:');
+    const readyApp = createApp({ database });
+    apps.push(readyApp);
+    expect((await readyApp.inject('/api/ready')).json()).toMatchObject({
+      status: 'ready',
+      database: 'connected',
+    });
+    database.close();
   });
 
   it('returns contract errors for missing routes and never accepts POST as a read', async () => {
