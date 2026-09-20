@@ -12,6 +12,7 @@ const configSchema = z.object({
   APP_MODE: z.enum(['demo', 'production']).default('demo'),
   DATABASE_PATH: z.string().trim().min(1).optional(),
   UPLOAD_PATH: z.string().trim().min(1).optional(),
+  IDENTITY_GATEWAY_SECRET: z.string().min(32).optional(),
 });
 
 export function readConfig(environment: NodeJS.ProcessEnv) {
@@ -24,6 +25,11 @@ export function readConfig(environment: NodeJS.ProcessEnv) {
   }
   if (result.data.APP_MODE === 'production' && !result.data.DATABASE_PATH)
     throw new Error('Invalid server configuration: DATABASE_PATH');
+  if (
+    result.data.APP_MODE === 'production' &&
+    !result.data.IDENTITY_GATEWAY_SECRET
+  )
+    throw new Error('Invalid server configuration: IDENTITY_GATEWAY_SECRET');
   return {
     ...result.data,
     DATABASE_PATH: result.data.DATABASE_PATH ?? 'data/suraksha-demo.sqlite',

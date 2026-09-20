@@ -1,0 +1,33 @@
+services:
+  demo:
+    build: .
+    restart: unless-stopped
+    environment:
+      APP_MODE: demo
+      DATABASE_PATH: /app/data/demo.sqlite
+      UPLOAD_PATH: /app/data/uploads
+      LOG_LEVEL: info
+    ports:
+      - '127.0.0.1:3001:3001'
+    volumes:
+      - demo-data:/app/data
+    profiles: [demo]
+
+  production:
+    build: .
+    restart: unless-stopped
+    environment:
+      APP_MODE: production
+      DATABASE_PATH: /app/data/production.sqlite
+      UPLOAD_PATH: /app/data/uploads
+      LOG_LEVEL: info
+      IDENTITY_GATEWAY_SECRET: ${IDENTITY_GATEWAY_SECRET:?set IDENTITY_GATEWAY_SECRET}
+    ports:
+      - '127.0.0.1:3002:3001'
+    volumes:
+      - production-data:/app/data
+    profiles: [production]
+
+volumes:
+  demo-data:
+  production-data:

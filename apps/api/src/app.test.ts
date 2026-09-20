@@ -108,14 +108,30 @@ describe('API foundation', () => {
 
   it('persists production workspace identities before database-backed writes', async () => {
     const database = openDatabase(':memory:');
-    const app = createApp({ mode: 'production', database });
+    const app = createApp({
+      mode: 'production',
+      database,
+      identityGatewaySecret: 'test-gateway-secret-at-least-32-characters',
+    });
     apps.push(app);
     const headers = {
       'oai-authenticated-user-id': '60000000-0000-4000-8000-000000000001',
       'oai-authenticated-user-email': 'production-student@example.test',
       'oai-authenticated-user-full-name': 'Production%20Student',
       'oai-authenticated-user-full-name-encoding': 'percent-encoded-utf-8',
+      'x-suraksha-gateway-secret': 'test-gateway-secret-at-least-32-characters',
     };
+    const { 'x-suraksha-gateway-secret': _secret, ...spoofedHeaders } = headers;
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/onboarding',
+          headers: spoofedHeaders,
+          payload: { role: 'student' },
+        })
+      ).statusCode,
+    ).toBe(401);
     expect(
       (
         await app.inject({
@@ -1216,11 +1232,18 @@ describe('API foundation', () => {
       readConfig({
         APP_MODE: 'production',
         DATABASE_PATH: 'data/production.sqlite',
+        IDENTITY_GATEWAY_SECRET: 'test-gateway-secret-at-least-32-characters',
       }).APP_MODE,
     ).toBe('production');
     expect(() => readConfig({ APP_MODE: 'production' })).toThrow(
       'DATABASE_PATH',
     );
+    expect(() =>
+      readConfig({
+        APP_MODE: 'production',
+        DATABASE_PATH: 'data/production.sqlite',
+      }),
+    ).toThrow('IDENTITY_GATEWAY_SECRET');
     expect(() => readConfig({ APP_MODE: 'preview' })).toThrow('APP_MODE');
     for (const PORT of ['0', '65536', 'abc', '1.5', '']) {
       expect(() => readConfig({ PORT })).toThrow('PORT');

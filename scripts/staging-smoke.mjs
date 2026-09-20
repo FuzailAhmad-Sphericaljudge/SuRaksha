@@ -18,6 +18,7 @@ const child = spawn(process.execPath, ['dist/server.js'], {
     LOG_LEVEL: 'info',
     DATABASE_PATH: join(directory, 'staging.sqlite'),
     UPLOAD_PATH: join(directory, 'uploads'),
+    IDENTITY_GATEWAY_SECRET: 'staging-gateway-secret-at-least-32-characters',
   },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
@@ -43,6 +44,8 @@ try {
     'oai-authenticated-user-email': 'staging-student@example.test',
     'oai-authenticated-user-full-name': 'Staging%20Student',
     'oai-authenticated-user-full-name-encoding': 'percent-encoded-utf-8',
+    'x-suraksha-gateway-secret':
+      'staging-gateway-secret-at-least-32-characters',
   };
   assert.equal((await fetch(`${origin}/api/ready`)).status, 200);
   const bootstrap = await (await fetch(`${origin}/api/bootstrap`)).json();

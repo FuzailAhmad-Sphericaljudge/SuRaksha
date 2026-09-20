@@ -199,6 +199,8 @@ Deploy separate demo and production services, databases and storage. Configure d
 
 Done when both URLs are healthy, isolated, monitored and rollback is tested.
 
+Status: partial — an immutable non-root container, separate demo/production Compose services and volumes, database readiness healthcheck, secret-gated production identity headers, CI image build, environment templates and deployment/rollback runbook are complete. Docker is unavailable on the current workstation, while CI performs the image build. Public URLs, managed volumes, TLS, identity gateway, secret manager, monitoring/alerts and off-host backups require the selected hosting account and domain.
+
 ## Phase 23 — Controlled real-data pilot
 
 Launch one locality with a small reviewed dataset and named operational reviewers. Collect corrections, user feedback and resolution outcomes.

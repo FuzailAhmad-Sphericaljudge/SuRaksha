@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { IncomingHttpHeaders } from 'node:http';
 import { createReadStream } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -47,6 +47,7 @@ type AppOptions = {
   mode?: 'demo' | 'production';
   database?: DatabaseSync;
   uploadRoot?: string;
+  identityGatewaySecret?: string;
 };
 
 function contentMatchesMediaType(mediaType: string, buffer: Buffer) {
@@ -145,6 +146,17 @@ export function createApp(options: AppOptions = {}) {
   const isDemoReviewer = (email: string) =>
     mode === 'demo' && email.toLowerCase() === 'reviewer@suraksha.demo';
   const currentUser = (headers: IncomingHttpHeaders) => {
+    const suppliedGatewaySecret = headers['x-suraksha-gateway-secret'];
+    const trustedProductionIdentity =
+      mode !== 'production' ||
+      (typeof suppliedGatewaySecret === 'string' &&
+        Boolean(options.identityGatewaySecret) &&
+        Buffer.byteLength(suppliedGatewaySecret) ===
+          Buffer.byteLength(options.identityGatewaySecret ?? '') &&
+        timingSafeEqual(
+          Buffer.from(suppliedGatewaySecret),
+          Buffer.from(options.identityGatewaySecret ?? ''),
+        ));
     const user =
       (database && mode === 'demo'
         ? readDemoUser(
@@ -152,7 +164,8 @@ export function createApp(options: AppOptions = {}) {
             typeof headers.cookie === 'string' ? headers.cookie : undefined,
             now(),
           )
-        : null) ?? readWorkspaceIdentity(headers);
+        : null) ??
+      (trustedProductionIdentity ? readWorkspaceIdentity(headers) : null);
     if (user && database && mode === 'production')
       database
         .prepare(

@@ -17,6 +17,9 @@ const app = createApp({
   mode: config.APP_MODE,
   database,
   uploadRoot: config.UPLOAD_PATH,
+  ...(config.IDENTITY_GATEWAY_SECRET
+    ? { identityGatewaySecret: config.IDENTITY_GATEWAY_SECRET }
+    : {}),
   ...(existsSync(webRoot) ? { webRoot } : {}),
 });
 
