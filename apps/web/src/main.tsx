@@ -844,6 +844,21 @@ function App() {
       : []),
     ...(isReviewer ? ([['review', 'Review desk']] as const) : []),
   ];
+  const pageMeta: Record<Exclude<AppPage, 'home'>, string> = {
+    dashboard: 'Your role, saved places and active work in one view.',
+    intake:
+      'Add a place with a public source and the date it was last checked.',
+    verification:
+      'Submit ownership or professional credentials for independent review.',
+    reports:
+      'Attach a concern to the correct property and keep original evidence private.',
+    updates:
+      'Follow decisions, repair progress and guardian sharing without exposing evidence.',
+    privacy:
+      'Control consent, exports, corrections, grievances and account deletion.',
+    review:
+      'Prioritise evidence, claims, credentials and locality coverage with an audit trail.',
+  };
 
   function navigate(nextPage: AppPage) {
     setPage(nextPage);
@@ -894,13 +909,26 @@ function App() {
       </header>
       {page !== 'home' && (
         <header className="page-heading" id="top">
-          <p className="kicker">SafePG workspace</p>
-          <h1>{pages.find(([id]) => id === page)?.[1]}</h1>
-          <p>
-            {session.authenticated
-              ? 'Each action stays in its own private, role-aware workspace. Public profile information is kept separate from evidence and account data.'
-              : 'Sign in with a demo account to use this workspace. You can still explore the public product story from Home.'}
-          </p>
+          <div>
+            <p className="kicker">SafePG workspace</p>
+            <h1>{pages.find(([id]) => id === page)?.[1]}</h1>
+            <p>
+              {session.authenticated
+                ? pageMeta[page]
+                : 'Sign in with a demo account to use this workspace. You can still explore the public product story from Home.'}
+            </p>
+          </div>
+          {session.authenticated && session.profile && (
+            <aside className="workspace-status" aria-label="Account status">
+              <span>{roleLabels[session.profile.role]}</span>
+              <strong>
+                {session.profile.reviewStatus === 'pending_review'
+                  ? 'Verification pending'
+                  : 'Account active'}
+              </strong>
+              <small>{mode === 'demo' ? 'Demo workspace' : 'Production'}</small>
+            </aside>
+          )}
         </header>
       )}
       {authOpen && mode === 'demo' && (
@@ -1406,12 +1434,36 @@ function App() {
                 <details>
                   <summary>Locality coverage gaps</summary>
                   {analytics.localities.map((locality) => (
-                    <p key={locality.locality}>
-                      {locality.locality}: {locality.coveredCount}/
-                      {locality.candidateCount} covered · gap{' '}
-                      {locality.gapCount}
-                    </p>
+                    <article
+                      className="locality-readiness"
+                      key={locality.locality}
+                    >
+                      <div>
+                        <strong>{locality.locality}</strong>
+                        <small>
+                          {locality.coveredCount}/{locality.candidateCount}{' '}
+                          records reviewed · {locality.gapCount} gaps
+                        </small>
+                      </div>
+                      <span
+                        className={
+                          locality.gapCount === 0 &&
+                          locality.candidateCount >= 3
+                            ? 'gate-pass'
+                            : 'gate-hold'
+                        }
+                      >
+                        {locality.gapCount === 0 && locality.candidateCount >= 3
+                          ? 'Coverage gate passed'
+                          : 'Hold expansion'}
+                      </span>
+                    </article>
                   ))}
+                  <p className="readiness-note">
+                    Passing this coverage gate does not launch a locality. Named
+                    reviewers, verified professionals and support ownership are
+                    still required.
+                  </p>
                 </details>
               </div>
             )}

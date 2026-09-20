@@ -215,6 +215,13 @@ Add localities only when discovery coverage, reviewer capacity and professional 
 
 Done when expansion does not reduce evidence quality or create unreviewed backlogs.
 
+Status: partial — reviewer analytics now expose a conservative locality coverage
+gate and explicitly hold expansion where reviewed-record gaps remain. The
+workspace navigation and responsive information hierarchy have also been rebuilt
+so additional localities do not add more workflows to one crowded page. Launch
+still requires a real pilot locality, named reviewer and professional capacity,
+support ownership, and acceptable backlog levels.
+
 ## Delivery rule
 
 Each implementation phase ends with a browser-testable flow, relevant tests, a clean migration path, documentation, one focused commit and a push to `main`. A contract-only foundation is reported as partial, not complete.
